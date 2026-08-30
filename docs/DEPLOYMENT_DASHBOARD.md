@@ -166,4 +166,85 @@ Dashboard 上的 **D1/KV bindings** 与 **Variables/Secrets** 会在部署时覆
 
 ---
 
-> 完成以上 8 步，`https://mizuki-blog.<子域>.workers.dev` 即为 Mizuki 完整版（含 GitHub 登录、后台、评论楼中楼、搜索、SEO），后续推送到 `main` 会自动重新 Build/Deploy（见 `.github/workflows/ci.yml`）。
+---
+
+## 9. 部署命令（必读 · Dashboard 方式的命令行校验/备用）
+
+> 虽为 Dashboard 部署，以下命令用于**本地校验、手动应急部署、迁移校验**，均已在仓库 `package.json` 配好 `scripts`，直接复制即用。
+
+### 9.1 本地开发
+
+```bash
+pnpm install --frozen-lockfile   # 严格按 pnpm-lock.yaml 安装
+pnpm dev                          # http://localhost:4321（Astro dev，.dev.vars 自动加载）
+pnpm astro check                  # 类型检查（0 errors 方可部署）
+pnpm build                        # 生成 dist/ + dist/_worker.js（约 13s，544 KiB gzip）
+pnpm preview                      # 预览构建产物（需先 build）
+```
+
+### 9.2 数据库迁移（D1）
+
+```bash
+# 本地（需 workerd，沙盒可能报 tcmalloc OOM 属环境限制，远端不受影响）
+pnpm db:migrate:local             # wrangler d1 migrations apply DB --local
+# 远端（需先 wrangler login）
+pnpm db:migrate:remote            # wrangler d1 migrations apply DB --remote
+
+# 手动校验（Dashboard D1 Console 也可执行）
+wrangler d1 execute mizuki-db --local --command "SELECT name FROM sqlite_master WHERE type='table';"
+wrangler d1 execute mizuki-db --remote --command "SELECT slug, title FROM posts LIMIT 5;"
+# 提权首个 admin（将 GitHub 邮箱换成你的）
+wrangler d1 execute mizuki-db --remote --command "UPDATE users SET role='admin' WHERE email='你的GitHub邮箱';"
+```
+
+### 9.3 部署到 Cloudflare（命令行备用，与 Dashboard 等价）
+
+```bash
+# 1. 登录（只需一次）
+npx wrangler login
+# 或用 API Token
+# export CLOUDFLARE_API_TOKEN=xxxxx
+# export CLOUDFLARE_ACCOUNT_ID=xxxxx
+
+# 2. 预检（不上传）
+npx wrangler deploy --dry-run
+# 预期：Total Upload: 2476 KiB / gzip: 544.96 KiB（<3MB 安全）
+
+# 3. 正式部署（读取 wrangler.jsonc + dist/）
+pnpm deploy                       # = pnpm build && wrangler deploy
+# 或分步
+pnpm build && npx wrangler deploy
+
+# 4. 部署后校验
+curl -I https://mizuki-blog.<子域>.workers.dev/                 # 200
+curl https://mizuki-blog.<子域>.workers.dev/sitemap.xml | head
+curl https://mizuki-blog.<子域>.workers.dev/robots.txt
+curl "https://mizuki-blog.<子域>.workers.dev/api/search?q=mizuki"
+```
+
+### 9.4 环境变量（命令行 Secrets）
+
+```bash
+# 生成强随机 SECRET
+openssl rand -base64 32
+
+# 写入 Secrets（加密存储，不在 wrangler.jsonc 明文）
+npx wrangler secret put BETTER_AUTH_SECRET      # 粘贴上步输出
+npx wrangler secret put GITHUB_CLIENT_SECRET
+# 明文变量（也可在 Dashboard Settings → Variables 加）
+npx wrangler secret put GITHUB_CLIENT_ID       # 或用 vars
+# BETTER_AUTH_URL 会在 Dashboard Variables 设为 https://mizuki-blog.<子域>.workers.dev
+```
+
+### 9.5 CI 自动部署（已配好 .github/workflows/ci.yml）
+
+```yaml
+# 推送到 main 自动触发
+pnpm install --frozen-lockfile
+pnpm astro check
+pnpm build
+# 需在 GitHub Settings → Secrets and variables → Actions 配置：
+# CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID / BETTER_AUTH_SECRET / GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET
+```
+
+> 完成以上 8 步 + 本节命令校验，`https://mizuki-blog.<子域>.workers.dev` 即为 Mizuki 完整版（含 GitHub 登录、后台、评论楼中楼、搜索、SEO），后续推送到 `main` 会自动重新 Build/Deploy（见 `.github/workflows/ci.yml`）。
