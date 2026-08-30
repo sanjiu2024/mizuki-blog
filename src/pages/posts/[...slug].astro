@@ -117,6 +117,10 @@ const dateLabel = post ? new Date((post.publishedAt ?? post.createdAt) as number
             <div id="comments-list" class="space-y-3">
               <p class="text-sm opacity-60">Loading comments...</p>
             </div>
+            <div id="reply-indicator" class="hidden text-xs px-1 py-1 flex items-center gap-2">
+              <span class="opacity-60">Replying to <span id="reply-to-label" class="font-semibold"></span></span>
+              <button id="reply-cancel" type="button" class="underline text-xs" style="color: var(--primary);">Cancel</button>
+            </div>
             <form id="comment-form" class="card-base enable-card-border p-4 space-y-3" style="border-radius: var(--radius-large);">
               <textarea id="comment-content" placeholder="Write a comment... (login required)" rows="3" class="w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
               <div class="flex justify-between items-center">
@@ -132,15 +136,80 @@ const dateLabel = post ? new Date((post.publishedAt ?? post.createdAt) as number
               const form = document.getElementById('comment-form');
               const input = document.getElementById('comment-content');
               const msg = document.getElementById('comment-msg');
+              const replyIndicator = document.getElementById('reply-indicator');
+              const replyLabel = document.getElementById('reply-to-label');
+              const replyCancel = document.getElementById('reply-cancel');
+              let replyParentId = null;
+              let replyParentLabel = '';
+              function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+              function buildTree(rows){
+                const byId = new Map(); const roots=[];
+                rows.forEach(r=> byId.set(r.id, {...r, children:[]}));
+                rows.forEach(r=> {
+                  const n=byId.get(r.id);
+                  if(r.parent_id && byId.has(r.parent_id)) byId.get(r.parent_id).children.push(n); else roots.push(n);
+                });
+                const sortRec=(arr)=>{ arr.sort((a,b)=>a.created_at-b.created_at); arr.forEach(x=>sortRec(x.children)); };
+                sortRec(roots); return roots;
+              }
+              function renderNode(node, depth){
+                const pad = Math.min(depth, 5);
+                const indent = pad ? `margin-left:${pad*16}px; border-left:2px solid var(--line-divider); padding-left:12px;` : '';
+                const likeCount = node.likeCount ?? node.like_count ?? 0;
+                const time = new Date(node.created_at).toLocaleString();
+                const childrenHtml = (node.children||[]).map(c=>renderNode(c, depth+1)).join('');
+                return `<div class="card-base p-3 text-sm" style="border-radius:0.75rem; border:1px solid var(--line-divider); ${indent}">
+                  <div class="flex justify-between items-start gap-2">
+                    <div class="opacity-60 text-xs">${esc(time)}</div>
+                    <div class="flex items-center gap-2">
+                      <button data-like="${node.id}" class="inline-flex items-center gap-1 text-xs btn-plain px-2 py-1">♥ <span class="like-count">${likeCount}</span></button>
+                      <button data-reply="${node.id}" data-label="${esc((node.content||'').slice(0,24))}" class="text-xs btn-plain px-2 py-1">Reply</button>
+                    </div>
+                  </div>
+                  <div class="mt-1 break-words">${esc(node.content)}</div>
+                  ${childrenHtml ? `<div class="mt-3 space-y-3">${childrenHtml}</div>` : ''}
+                </div>`;
+              }
               const load = async () => {
                 try {
                   const res = await fetch(`/api/comments?postId=${postId}`);
                   const data = await res.json();
-                  const cs = data.comments || [];
-                  if (!cs.length) { list.innerHTML = '<p class="text-sm opacity-60">No comments yet. Be the first!</p>'; return; }
-                  list.innerHTML = cs.map(c => `<div class="card-base p-3 text-sm" style="border-radius: 0.75rem; border: 1px solid var(--line-divider);"><div class="opacity-60 text-xs mb-1">${new Date(c.created_at).toLocaleString()}</div><div>${c.content.replace(/</g,'&lt;')}</div></div>`).join('');
+                  const rows = data.comments || [];
+                  if (!rows.length) { list.innerHTML = '<p class="text-sm opacity-60">No comments yet. Be the first!</p>'; return; }
+                  const tree = data.tree && data.tree.length ? data.tree : buildTree(rows);
+                  list.innerHTML = tree.map(n=>renderNode(n,0)).join('');
+                  // bind reply
+                  list.querySelectorAll('[data-reply]').forEach(btn=>{
+                    btn.addEventListener('click', ()=>{
+                      replyParentId = btn.getAttribute('data-reply');
+                      replyParentLabel = btn.getAttribute('data-label') || replyParentId;
+                      replyLabel.textContent = replyParentLabel;
+                      replyIndicator.classList.remove('hidden');
+                      input.focus();
+                      input.placeholder = 'Write a reply...';
+                    });
+                  });
+                  list.querySelectorAll('[data-like]').forEach(btn=>{
+                    btn.addEventListener('click', async ()=>{
+                      const cid = btn.getAttribute('data-like');
+                      btn.disabled=true;
+                      try{
+                        let res = await fetch(`/api/comments/${cid}/like`, { method:'POST', credentials:'include' });
+                        if(res.status===404){
+                          res = await fetch('/api/comments/like', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ commentId: cid }) });
+                        }
+                        const d=await res.json().catch(()=>({}));
+                        if(!res.ok) throw new Error(d.error||'Failed');
+                        const span = btn.querySelector('.like-count');
+                        if(span && typeof d.likeCount==='number') span.textContent = String(d.likeCount);
+                        btn.style.color = d.liked ? 'var(--primary)' : '';
+                      }catch(e){ console.error(e); }
+                      btn.disabled=false;
+                    });
+                  });
                 } catch { list.innerHTML = '<p class="text-sm opacity-60">Failed to load.</p>'; }
               };
+              replyCancel?.addEventListener('click', ()=>{ replyParentId=null; replyIndicator.classList.add('hidden'); input.placeholder='Write a comment... (login required)'; });
               await load();
               form?.addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -148,12 +217,14 @@ const dateLabel = post ? new Date((post.publishedAt ?? post.createdAt) as number
                 if (!content) return;
                 msg.classList.remove('hidden'); msg.textContent='Posting...'; msg.className='text-xs';
                 try {
-                  const res = await fetch('/api/comments', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ postId, content }) });
+                  const payload = { postId, content };
+                  if(replyParentId) payload.parentId = replyParentId;
+                  const res = await fetch('/api/comments', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(payload) });
                   const data = await res.json().catch(()=>({}));
                   if (!res.ok) throw new Error(data.error || 'Failed');
-                  msg.textContent='Posted!'; input.value=''; await load();
+                  msg.textContent='Posted!'; input.value=''; replyParentId=null; replyIndicator.classList.add('hidden'); input.placeholder='Write a comment... (login required)'; await load();
                 } catch(err){ msg.textContent=err.message||String(err); msg.classList.add('text-red-500'); }
-                setTimeout(()=> msg.classList.add('hidden'), 2000);
+                setTimeout(()=> msg.classList.add('hidden'), 2500);
               });
             })();
           </script>

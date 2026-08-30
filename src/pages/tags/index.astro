@@ -1,17 +1,35 @@
 ---
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { seedData } from "../../db/seed";
 
-const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
-const stmt = d1.prepare(`
-  SELECT t.id, t.name, t.slug, COUNT(pt.post_id) as cnt
-  FROM tags t
-  LEFT JOIN post_tags pt ON pt.tag_id = t.id
-  GROUP BY t.id
-  ORDER BY cnt DESC, t.name ASC
-`);
-const res = await stmt.all();
-const tags = (res.results ?? res) as Array<{ id: string; name: string; slug: string; cnt: number }>;
+let tags: Array<{ id: string; name: string; slug: string; cnt: number }> = [];
+try {
+  const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+  if (!d1) throw new Error("D1 unavailable");
+  const stmt = d1.prepare(`
+    SELECT t.id, t.name, t.slug, COUNT(pt.post_id) as cnt
+    FROM tags t
+    LEFT JOIN post_tags pt ON pt.tag_id = t.id
+    GROUP BY t.id
+    ORDER BY cnt DESC, t.name ASC
+    LIMIT 20
+  `);
+  const res = await stmt.all();
+  tags = (res.results ?? res) as typeof tags;
+} catch {
+  // fallback to seedData
+  const countMap = new Map<string, number>();
+  for (const pt of seedData.postTags) {
+    countMap.set(pt.tagId, (countMap.get(pt.tagId) ?? 0) + 1);
+  }
+  tags = seedData.tags.slice(0, 20).map((t) => ({
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    cnt: countMap.get(t.id) ?? 0,
+  }));
+}
 ---
 
 <BaseLayout title="Tags — Mizuki Blog" description="Browse posts by tag">

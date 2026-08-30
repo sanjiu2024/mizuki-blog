@@ -1,30 +1,63 @@
 ---
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { seedData } from "../../db/seed";
 
 const { tag } = Astro.params;
 if (!tag) return Astro.redirect("/tags");
 
-const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+const url = new URL(Astro.request.url);
+const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+const rawLimit = parseInt(url.searchParams.get("limit") ?? "10", 10) || 10;
+const limit = Math.min(20, Math.max(1, rawLimit));
+const offset = (page - 1) * limit;
 
-const tagStmt = d1.prepare("SELECT id, name, slug FROM tags WHERE slug = ? LIMIT 1");
-const tagRes = await tagStmt.bind(tag).all();
-const rows = (tagRes.results ?? tagRes) as Array<{ id: string; name: string; slug: string }>;
-const tagRow = rows[0];
-
-// If tag not found, show empty state
+let tagRow: { id: string; name: string; slug: string } | undefined;
 let posts: Array<{ id: string; slug: string; title: string; excerpt: string | null; published_at: number | null }> = [];
-if (tagRow) {
-  const postStmt = d1.prepare(`
-    SELECT p.id, p.slug, p.title, p.excerpt, p.published_at
-    FROM posts p
-    JOIN post_tags pt ON pt.post_id = p.id
-    WHERE pt.tag_id = ?
-    ORDER BY p.published_at DESC
-  `);
-  const postRes = await postStmt.bind(tagRow.id).all();
-  posts = (postRes.results ?? postRes) as typeof posts;
+let total = 0;
+
+try {
+  const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+  if (!d1) throw new Error("D1 unavailable");
+  const tagStmt = d1.prepare("SELECT id, name, slug FROM tags WHERE slug = ? LIMIT 1");
+  const tagRes = await tagStmt.bind(tag).all();
+  const rows = (tagRes.results ?? tagRes) as Array<{ id: string; name: string; slug: string }>;
+  tagRow = rows[0];
+
+  if (tagRow) {
+    const countRes = await d1.prepare("SELECT COUNT(*) as c FROM post_tags WHERE tag_id=?").bind(tagRow.id).first<{ c: number }>();
+    total = countRes?.c ?? 0;
+    const postStmt = d1.prepare(`
+      SELECT p.id, p.slug, p.title, p.excerpt, p.published_at
+      FROM posts p
+      JOIN post_tags pt ON pt.post_id = p.id
+      WHERE pt.tag_id = ?
+      ORDER BY p.published_at DESC
+      LIMIT ? OFFSET ?
+    `);
+    const postRes = await postStmt.bind(tagRow.id, limit, offset).all();
+    posts = (postRes.results ?? postRes) as typeof posts;
+  }
+} catch {
+  // fallback to seedData
+  const fallbackTag = seedData.tags.find((t) => t.slug === tag);
+  if (fallbackTag) {
+    tagRow = { id: fallbackTag.id, name: fallbackTag.name, slug: fallbackTag.slug };
+    const postIds = seedData.postTags.filter((pt) => pt.tagId === fallbackTag.id).map((pt) => pt.postId);
+    const all = seedData.posts
+      .filter((p) => postIds.includes(p.id) && p.status === "published")
+      .map((p) => ({
+        id: p.id,
+        slug: p.slug,
+        title: p.title,
+        excerpt: p.excerpt ?? null,
+        published_at: p.publishedAt ?? null,
+      }));
+    total = all.length;
+    posts = all.slice(offset, offset + limit);
+  }
 }
+const totalPages = Math.max(1, Math.ceil(total / limit));
 ---
 
 <BaseLayout title={tagRow ? `#${tagRow.name} — Mizuki Blog` : "Tag not found"} description={tagRow ? `Posts tagged ${tagRow.name}` : "Tag not found"}>
@@ -32,7 +65,7 @@ if (tagRow) {
     {tagRow ? (
       <>
         <h1 class="text-2xl font-bold mb-2">#{tagRow.name}</h1>
-        <p class="text-sm opacity-60 mb-6">{posts.length} post{posts.length !== 1 ? "s" : ""}</p>
+        <p class="text-sm opacity-60 mb-6">{total} post{total !== 1 ? "s" : ""} · page {page}/{totalPages}</p>
         {posts.length === 0 ? (
           <p class="opacity-60">No posts for this tag yet.</p>
         ) : (
@@ -45,6 +78,13 @@ if (tagRow) {
               </li>
             ))}
           </ul>
+        )}
+        {totalPages > 1 && (
+          <nav class="mt-6 flex items-center gap-2 text-sm">
+            {page > 1 && <a href={`/tags/${tag}?page=${page-1}&limit=${limit}`} class="btn-regular px-3 py-1.5">← Prev</a>}
+            <span class="opacity-60">Page {page} / {totalPages}</span>
+            {page < totalPages && <a href={`/tags/${tag}?page=${page+1}&limit=${limit}`} class="btn-regular px-3 py-1.5">Next →</a>}
+          </nav>
         )}
       </>
     ) : (

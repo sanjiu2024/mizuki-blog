@@ -6,9 +6,33 @@ import * as schema from "./db/schema";
 export const createAuth = (env: any) =>
   betterAuth({
     database: drizzleAdapter(createDb(env.DB), { provider: "sqlite", schema }),
-    emailAndPassword: { enabled: true, minPasswordLength: 8 },
-    session: { cookieCache: { enabled: true } },
+    baseURL: env.BETTER_AUTH_URL ?? "http://localhost:4321",
+    trustedOrigins: [
+      env.BETTER_AUTH_URL,
+      "http://localhost:4321",
+      "http://127.0.0.1:4321",
+    ].filter(Boolean),
     secret: env.BETTER_AUTH_SECRET ?? "dev-secret-please-change-32-chars-min",
-    baseURL: env.BETTER_AUTH_URL ?? env.CF_PAGES_URL ?? "http://localhost:4321",
-    trustedOrigins: ["http://localhost:4321", "http://127.0.0.1:4321"],
+    emailAndPassword: { enabled: true },
+    socialProviders: {
+      github: {
+        clientId: env.GITHUB_CLIENT_ID,
+        clientSecret: env.GITHUB_CLIENT_SECRET,
+        scope: ["user:email", "read:user"],
+        mapProfileToUser: (profile: any) => ({
+          name: profile.name ?? profile.login ?? profile.email,
+          email: profile.email,
+          image: profile.avatar_url ?? profile.picture ?? null,
+          emailVerified: true,
+        }),
+      },
+    },
+    account: {
+      accountLinking: { enabled: true, trustedProviders: ["github"] },
+    },
+    user: {
+      additionalFields: {
+        image: { type: "string", required: false },
+      },
+    },
   });

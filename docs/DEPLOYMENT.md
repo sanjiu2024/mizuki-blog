@@ -33,15 +33,56 @@ wrangler deploy
   "compatibility_date": "2026-08-30",
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "binding": "ASSETS", "directory": "./dist" },
-  "d1_databases": [{ "binding": "DB", "database_name": "mizuki-db", "migrations_dir": "migrations" }],
-  "kv_namespaces": [{ "binding": "SESSION", "id": "local-session" }]
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mizuki-db",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "kv_namespaces": [{ "binding": "SESSION", "id": "local-session" }],
 }
 ```
 
 ## 环境变量
 
-- `BETTER_AUTH_SECRET`（32+ 字符，`.dev.vars` 本地，GitHub Secrets 远端）
-- `BETTER_AUTH_URL`（本地 `http://localhost:4321`，远端为 Workers URL）
+| 变量                   | 必填            | 说明                                                                             |
+| ---------------------- | --------------- | -------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`   | ✅              | 32+ 字符，`.dev.vars` 本地，GitHub Secrets / `wrangler secret put` 远端          |
+| `BETTER_AUTH_URL`      | ✅              | 本地 `http://localhost:4321`，远端为 Workers URL `https://<workers>.workers.dev` |
+| `GITHUB_CLIENT_ID`     | GitHub 登录需要 | GitHub OAuth App 的 Client ID                                                    |
+| `GITHUB_CLIENT_SECRET` | GitHub 登录需要 | GitHub OAuth App 的 Client Secret（必须用 `wrangler secret put`）                |
+
+`.dev.vars` 示例：
+
+```
+BETTER_AUTH_SECRET=dev-secret-please-change-32-chars-min
+BETTER_AUTH_URL=http://localhost:4321
+GITHUB_CLIENT_ID=Ov23liXXXXXXXX
+GITHUB_CLIENT_SECRET=abc123...
+```
+
+远端设置：
+
+```bash
+wrangler secret put BETTER_AUTH_SECRET
+wrangler secret put GITHUB_CLIENT_SECRET
+# GITHUB_CLIENT_ID 可放 vars 或 secret
+wrangler deploy
+```
+
+## GitHub OAuth App 创建
+
+1. GitHub → Settings → Developer settings → OAuth Apps → **New OAuth App**
+2. 填写：
+   - Application name: `mizuki-blog`
+   - Homepage URL: `https://<your-workers>.workers.dev`
+   - Authorization callback URL: `https://<your-workers>.workers.dev/api/auth/callback/github`
+3. 本地开发需再创建一个或在同一 App 的回调中追加（GitHub 仅支持一个回调 URL，推荐做法：开发用单独的 OAuth App，回调设为 `http://localhost:4321/api/auth/callback/github`）
+   > 替代方案：本地用 `.dev.vars` 指向远端回调并通过代理，但最稳妥是建两个 App。
+4. 生成后将 Client ID / Secret 写入上表位置。
+
+回调路径固定为 `/api/auth/callback/github`，由 `better-auth` 自动处理，不可自定义。
 
 ## 自定义域
 
@@ -49,9 +90,10 @@ Dashboard `Workers & Pages → mizuki-blog → Settings → Domains & Routes →
 
 ## CI
 
-`.github/workflows/ci.yml`：`pnpm install → astro check → build`，`main` 分支自动 `wrangler deploy`（需 `CLOUDFLARE_API_TOKEN` / `ACCOUNT_ID` / `BETTER_AUTH_SECRET`）。
+`.github/workflows/ci.yml`：`pnpm install → astro check → build`，`main` 分支自动 `wrangler deploy`（需 `CLOUDFLARE_API_TOKEN` / `ACCOUNT_ID` / `BETTER_AUTH_SECRET` / `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`）。
 
 ## 故障
 
 - `wrangler d1 --local` 在受限沙盒报 `tcmalloc` / `EPIPE` 为 workerd 内存限制，非 SQL 错误，远端正常。
 - `better-auth` 需 `nodejs_compat`，漏配会报 `node:crypto` not found。
+- GitHub 回调 404：检查 `BETTER_AUTH_URL` 是否与实际访问域一致，回调 URL 是否精确为 `.../api/auth/callback/github`。

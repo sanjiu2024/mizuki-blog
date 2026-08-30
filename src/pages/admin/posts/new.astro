@@ -1,0 +1,82 @@
+---
+export const prerender = false;
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="新建文章 — 后台">
+  <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
+    <h1 class="text-2xl font-bold mb-6">新建文章</h1>
+    <form id="new-form" class="card-base enable-card-border p-6 space-y-5" style="border-radius: var(--radius-large);">
+      <div>
+        <label class="text-sm font-medium">标题 *</label>
+        <input name="title" required placeholder="文章标题" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+      </div>
+      <div>
+        <label class="text-sm font-medium">Slug * <span class="opacity-50 font-normal">只允许 a-z0-9-</span></label>
+        <input name="slug" required pattern="^[a-z0-9-]+$" placeholder="hello-mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+      </div>
+      <div>
+        <label class="text-sm font-medium">摘要</label>
+        <textarea name="excerpt" rows="2" placeholder="一句话简介" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
+      </div>
+      <div>
+        <label class="text-sm font-medium">正文 * (Markdown)</label>
+        <textarea name="content" required rows="12" placeholder="# Hello Mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
+      </div>
+      <div>
+        <label class="text-sm font-medium">标签 <span class="opacity-50 font-normal">逗号分隔</span></label>
+        <input name="tags" placeholder="astro, mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+      </div>
+      <div>
+        <label class="text-sm font-medium">状态</label>
+        <select name="status" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">
+          <option value="published">published</option>
+          <option value="draft">draft</option>
+        </select>
+      </div>
+      <p id="form-msg" class="text-sm hidden"></p>
+      <div class="flex gap-3">
+        <button type="submit" class="btn-regular px-6 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">发布</button>
+        <a href="/admin" class="btn-plain px-6 py-2 text-sm rounded-lg">取消</a>
+      </div>
+    </form>
+  </div>
+  <script is:inline>
+    const form = document.getElementById('new-form');
+    const msg = document.getElementById('form-msg');
+    // auto slug from title
+    const titleEl = form?.querySelector('input[name="title"]');
+    const slugEl = form?.querySelector('input[name="slug"]');
+    titleEl?.addEventListener('input', () => {
+      if (!slugEl.value || slugEl.dataset.auto === '1') {
+        const s = titleEl.value.toLowerCase().trim().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'').replace(/-+/g,'-');
+        slugEl.value = s;
+        slugEl.dataset.auto = '1';
+      }
+    });
+    slugEl?.addEventListener('input', () => { slugEl.dataset.auto = '0'; });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const body = {
+        title: String(fd.get('title')||'').trim(),
+        slug: String(fd.get('slug')||'').trim(),
+        excerpt: String(fd.get('excerpt')||'').trim(),
+        content: String(fd.get('content')||'').trim(),
+        tags: String(fd.get('tags')||'').trim(),
+        status: String(fd.get('status')||'published'),
+      };
+      if (msg) { msg.textContent = '提交中...'; msg.className = 'text-sm'; msg.classList.remove('hidden'); }
+      try {
+        const res = await fetch('/api/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json().catch(()=>({}));
+        if (!res.ok) throw new Error(data.error || '发布失败');
+        if (msg) { msg.textContent = '发布成功，跳转中...'; msg.className = 'text-sm text-green-600'; }
+        location.href = '/admin';
+      } catch (err) {
+        if (msg) { msg.textContent = err.message || String(err); msg.className = 'text-sm text-red-500'; }
+      }
+    });
+  </script>
+</BaseLayout>

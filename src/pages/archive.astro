@@ -1,29 +1,55 @@
 ---
 export const prerender = false;
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { seedData } from "../db/seed";
 
-const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+let groups: Array<{ ym: string; cnt: number }> = [];
+let posts: Array<{ id: string; slug: string; title: string; excerpt: string | null; published_at: number; ym: string }> = [];
 
-const ymStmt = d1.prepare(`
-  SELECT strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym, count(*) as cnt
-  FROM posts
-  WHERE published_at IS NOT NULL
-  GROUP BY ym
-  ORDER BY ym DESC
-`);
-const ymRes = await ymStmt.all();
-const groups = (ymRes.results ?? ymRes) as Array<{ ym: string; cnt: number }>;
+try {
+  const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+  if (!d1) throw new Error("D1 unavailable");
+  const ymStmt = d1.prepare(`
+    SELECT strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym, count(*) as cnt
+    FROM posts
+    WHERE published_at IS NOT NULL AND status = 'published'
+    GROUP BY ym
+    ORDER BY ym DESC
+    LIMIT 20
+  `);
+  const ymRes = await ymStmt.all();
+  groups = (ymRes.results ?? ymRes) as typeof groups;
 
-// Also fetch all posts ordered for timeline
-const postsStmt = d1.prepare(`
-  SELECT id, slug, title, excerpt, published_at,
-         strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym
-  FROM posts
-  WHERE published_at IS NOT NULL
-  ORDER BY published_at DESC
-`);
-const postsRes = await postsStmt.all();
-const posts = (postsRes.results ?? postsRes) as Array<{ id: string; slug: string; title: string; excerpt: string | null; published_at: number; ym: string }>;
+  const postsStmt = d1.prepare(`
+    SELECT id, slug, title, excerpt, published_at,
+           strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym
+    FROM posts
+    WHERE published_at IS NOT NULL AND status = 'published'
+    ORDER BY published_at DESC
+    LIMIT 20
+  `);
+  const postsRes = await postsStmt.all();
+  posts = (postsRes.results ?? postsRes) as typeof posts;
+} catch {
+  // fallback to seedData
+  const seedPosts = seedData.posts.filter((p) => p.status === "published").slice(0, 20);
+  const map = new Map<string, number>();
+  posts = seedPosts.map((p) => {
+    const ym = new Date(p.publishedAt).toISOString().slice(0, 7);
+    map.set(ym, (map.get(ym) ?? 0) + 1);
+    return {
+      id: p.id,
+      slug: p.slug,
+      title: p.title,
+      excerpt: p.excerpt ?? null,
+      published_at: p.publishedAt,
+      ym,
+    };
+  });
+  groups = Array.from(map.entries())
+    .map(([ym, cnt]) => ({ ym, cnt }))
+    .sort((a, b) => b.ym.localeCompare(a.ym));
+}
 
 // Map ym -> posts
 const grouped = new Map<string, typeof posts>();

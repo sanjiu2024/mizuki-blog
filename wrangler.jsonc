@@ -23,4 +23,7 @@
   "observability": {
     "enabled": true,
   },
+  "vars": {
+    "BETTER_AUTH_URL": "http://localhost:4321",
+  },
 }

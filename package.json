@@ -14,12 +14,14 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "deploy": "astro build && wrangler deploy"
+    "deploy": "astro build && wrangler deploy",
+    "test": "vitest run"
   },
   "dependencies": {
     "astro": "^7.2.9",
     "better-auth": "^1.7.2",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "nanoid": "^6.0.1"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
@@ -31,6 +33,7 @@
     "drizzle-kit": "^0.31.10",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
+    "vitest": "^4.1.11",
     "wrangler": "^4.127.1"
   }
 }

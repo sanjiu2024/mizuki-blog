@@ -1,0 +1,106 @@
+---
+export const prerender = false;
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+
+const { id } = Astro.params;
+
+let post: any = null;
+let tagsStr = "";
+
+try {
+  const runtime: any = (Astro.locals as any)?.runtime;
+  const env = runtime?.env ?? {};
+  const db: D1Database | undefined = env.DB;
+  if (db && id) {
+    const p = await db.prepare("SELECT id, slug, title, excerpt, content, status FROM posts WHERE id=?").bind(id).first();
+    if (p) {
+      post = p;
+      const tagRes = await db.prepare("SELECT t.name FROM tags t JOIN post_tags pt ON pt.tag_id=t.id WHERE pt.post_id=?").bind(id).all();
+      const rows: any[] = ((tagRes.results ?? tagRes) as any[]) ?? [];
+      tagsStr = rows.map((r:any)=>r.name).join(", ");
+    }
+  }
+} catch {}
+
+if (!post) {
+  // fallback: try to show 404
+}
+---
+
+<BaseLayout title={post ? `编辑 ${post.title} — 后台` : "未找到 — 后台"}>
+  <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
+    {post ? (
+      <>
+        <h1 class="text-2xl font-bold mb-6">编辑文章</h1>
+        <form id="edit-form" class="card-base enable-card-border p-6 space-y-5" style="border-radius: var(--radius-large);">
+          <input type="hidden" name="id" value={post.id} />
+          <div>
+            <label class="text-sm font-medium">标题 *</label>
+            <input name="title" required value={post.title} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+          </div>
+          <div>
+            <label class="text-sm font-medium">Slug *</label>
+            <input name="slug" required pattern="^[a-z0-9-]+$" value={post.slug} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+          </div>
+          <div>
+            <label class="text-sm font-medium">摘要</label>
+            <textarea name="excerpt" rows="2" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">{post.excerpt ?? ""}</textarea>
+          </div>
+          <div>
+            <label class="text-sm font-medium">正文 *</label>
+            <textarea name="content" required rows="12" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" style="background: var(--card-bg); border-color: var(--line-divider);">{post.content}</textarea>
+          </div>
+          <div>
+            <label class="text-sm font-medium">标签（逗号分隔）</label>
+            <input name="tags" value={tagsStr} placeholder="astro, mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+          </div>
+          <div>
+            <label class="text-sm font-medium">状态</label>
+            <select name="status" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">
+              <option value="published" selected={post.status==='published'}>published</option>
+              <option value="draft" selected={post.status==='draft'}>draft</option>
+            </select>
+          </div>
+          <p id="form-msg" class="text-sm hidden"></p>
+          <div class="flex gap-3">
+            <button type="submit" class="btn-regular px-6 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">保存</button>
+            <a href="/admin" class="btn-plain px-6 py-2 text-sm rounded-lg">返回</a>
+          </div>
+        </form>
+        <script is:inline define:vars={{ postId: post.id }}>
+          const form = document.getElementById('edit-form');
+          const msg = document.getElementById('form-msg');
+          form?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(form);
+            const body = {
+              id: postId,
+              title: String(fd.get('title')||'').trim(),
+              slug: String(fd.get('slug')||'').trim(),
+              excerpt: String(fd.get('excerpt')||'').trim(),
+              content: String(fd.get('content')||'').trim(),
+              tags: String(fd.get('tags')||'').trim(),
+              status: String(fd.get('status')||'published'),
+            };
+            if (msg) { msg.textContent='保存中...'; msg.className='text-sm'; msg.classList.remove('hidden'); }
+            try {
+              const res = await fetch('/api/posts', { method: 'PATCH', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body)});
+              const data = await res.json().catch(()=>({}));
+              if (!res.ok) throw new Error(data.error||'保存失败');
+              if (msg) { msg.textContent='保存成功，跳转中...'; msg.className='text-sm text-green-600'; }
+              location.href='/admin';
+            } catch(err){
+              if (msg) { msg.textContent=err.message||String(err); msg.className='text-sm text-red-500'; }
+            }
+          });
+        </script>
+      </>
+    ) : (
+      <div class="text-center py-16">
+        <p class="text-lg font-semibold">文章未找到</p>
+        <p class="opacity-60 text-sm mt-2">id: {id}</p>
+        <a href="/admin" class="btn-regular mt-6 inline-flex px-4 py-2 text-sm rounded-lg" style="background: var(--primary); color:white;">返回列表</a>
+      </div>
+    )}
+  </div>
+</BaseLayout>

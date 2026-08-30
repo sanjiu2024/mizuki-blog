@@ -24,6 +24,13 @@ const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — 
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:type" content="article" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href={Astro.url.href} />
+    <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"BlogPosting", headline: title})} />
     <ClientRouter />
     <script is:inline>
       // early hue apply before paint
@@ -52,6 +59,14 @@ const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — 
           <a href="/tags" class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">Tags</a>
           <a href="/rss.xml" class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">RSS</a>
           <ThemeToggle />
+          <div id="auth-area" class="flex items-center gap-2 ml-1">
+            <a id="auth-login-link" href="/login" class="btn-regular px-3 py-1.5 text-sm font-medium hidden">Login</a>
+            <div id="auth-user" class="hidden items-center gap-2">
+              <img id="auth-avatar" alt="avatar" class="h-7 w-7 rounded-full object-cover hidden" />
+              <span id="auth-name" class="text-sm font-medium max-w-[8rem] truncate hidden sm:inline"></span>
+              <button id="auth-logout" class="btn-plain px-3 py-1.5 text-sm">退出</button>
+            </div>
+          </div>
         </div>
       </nav>
     </header>
@@ -73,6 +88,36 @@ const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — 
           const h = localStorage.getItem("hue") || "240";
           document.documentElement.style.setProperty("--hue", h);
         } catch {}
+      });
+    </script>
+    <script is:inline>
+      async function refreshAuth() {
+        const loginLink = document.getElementById('auth-login-link');
+        const userBox = document.getElementById('auth-user');
+        const avatar = document.getElementById('auth-avatar');
+        const nameEl = document.getElementById('auth-name');
+        try {
+          const res = await fetch('/api/auth/get-session', { credentials: 'include' });
+          const data = await res.json().catch(() => null);
+          const user = data?.user || data?.data?.user || null;
+          if (user) {
+            if (loginLink) loginLink.classList.add('hidden');
+            if (userBox) { userBox.classList.remove('hidden'); userBox.classList.add('flex'); }
+            if (nameEl) nameEl.textContent = user.name || user.email || 'User';
+            if (avatar && user.image) { avatar.src = user.image; avatar.classList.remove('hidden'); }
+          } else {
+            if (loginLink) loginLink.classList.remove('hidden');
+            if (userBox) { userBox.classList.add('hidden'); userBox.classList.remove('flex'); }
+          }
+        } catch {
+          if (loginLink) loginLink.classList.remove('hidden');
+        }
+      }
+      refreshAuth();
+      document.addEventListener('astro:page-load', refreshAuth);
+      document.getElementById('auth-logout')?.addEventListener('click', async () => {
+        try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' }); } catch {}
+        location.href = '/';
       });
     </script>
   </body>
