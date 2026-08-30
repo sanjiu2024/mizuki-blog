@@ -19,22 +19,26 @@ export const createAuth = (env: any) => {
     ].filter(Boolean),
     secret: env.BETTER_AUTH_SECRET ?? "dev-secret-please-change-32-chars-min",
     emailAndPassword: { enabled: true },
-    socialProviders: {
-      github: {
-        clientId: env.GITHUB_CLIENT_ID,
-        clientSecret: env.GITHUB_CLIENT_SECRET,
-        scope: ["user:email", "read:user"],
-        mapProfileToUser: (profile: any) => ({
-          name: profile.name ?? profile.login ?? profile.email,
-          email: profile.email,
-          image: profile.avatar_url ?? profile.picture ?? null,
-          emailVerified: true,
-        }),
-      },
-    },
-    account: {
-      accountLinking: { enabled: true, trustedProviders: ["github"] },
-    },
+    ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
+      ? {
+          socialProviders: {
+            github: {
+              clientId: env.GITHUB_CLIENT_ID,
+              clientSecret: env.GITHUB_CLIENT_SECRET,
+              scope: ["user:email", "read:user"],
+              mapProfileToUser: (profile: any) => ({
+                name: profile.name ?? profile.login ?? profile.email,
+                email: profile.email,
+                image: profile.avatar_url ?? profile.picture ?? null,
+                emailVerified: true,
+              }),
+            },
+          },
+          account: {
+            accountLinking: { enabled: true, trustedProviders: ["github"] },
+          },
+        }
+      : {}),
     user: {
       additionalFields: {
         image: { type: "string", required: false },
