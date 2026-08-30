@@ -5,25 +5,28 @@
   "main": "@astrojs/cloudflare/entrypoints/server",
   "assets": {
     "binding": "ASSETS",
-    "directory": "./dist",
+    "directory": "./dist"
+  },
+  "build": {
+    "command": "pnpm install --frozen-lockfile && pnpm build"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "mizuki-db",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   "kv_namespaces": [
     {
       "binding": "SESSION",
-      "id": "local-session",
-    },
+      "id": "local-session"
+    }
   ],
   "observability": {
-    "enabled": true,
+    "enabled": true
   },
   "vars": {
-    "BETTER_AUTH_URL": "http://localhost:4321",
-  },
+    "BETTER_AUTH_URL": "http://localhost:4321"
+  }
 }
