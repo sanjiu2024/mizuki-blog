@@ -3,8 +3,13 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createDb } from "./db/client";
 import * as schema from "./db/schema";
 
-export const createAuth = (env: any) =>
-  betterAuth({
+export const createAuth = (env: any) => {
+  if (!env?.DB) {
+    throw new Error(
+      "D1 DB binding missing: env.DB is undefined - check wrangler.jsonc d1_databases and Dashboard Bindings",
+    );
+  }
+  return betterAuth({
     database: drizzleAdapter(createDb(env.DB), { provider: "sqlite", schema }),
     baseURL: env.BETTER_AUTH_URL ?? "http://localhost:4321",
     trustedOrigins: [
@@ -36,3 +41,4 @@ export const createAuth = (env: any) =>
       },
     },
   });
+};

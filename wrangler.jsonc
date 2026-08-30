@@ -8,9 +8,22 @@
     "directory": "./dist",
   },
   "build": {
-    "command": "pnpm install --frozen-lockfile && pnpm build",
+    "command": "pnpm install --frozen-lockfile && pnpm build"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mizuki-db",
+      "database_id": "a8cc9bc8-20e7-447a-9b4a-8cc369976d95",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSION",
+      "id": "d576741a577e4e8d84086a1a3048757c"
+    }
+  ],
   "observability": {
-    "enabled": true,
-  },
-}
+    "enabled": true
+  }
