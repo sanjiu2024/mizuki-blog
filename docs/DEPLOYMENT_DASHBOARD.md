@@ -22,7 +22,7 @@
    - **Build configuration**：
      - **Framework preset**：`Astro`
      - **Build command**：`pnpm install --frozen-lockfile && pnpm build`（若 Dashboard 已自动填 `npm run build`，改成这条；`pnpm` 比 `npm` 省 30% 时间）
-     - **Deploy command**：留空（Workers 会自动 `wrangler deploy`，`wrangler.jsonc` 已写 `main: @astrojs/cloudflare/entrypoints/server`）
+     - **Deploy command**：**必须填** `npx wrangler deploy`（或 `pnpm deploy`，对应 `package.json` 的 `astro build && wrangler deploy`；留空会导致 Dashboard 跳过部署，只构建不发布）
      - **Root directory**：留空（项目在根）
      - **Environment variables (Build)**：先不填，§2 再加
    - **Failed to find wrangler.jsonc** 不用管，本仓库已提供 `wrangler.jsonc`（`assets + d1_databases + kv_namespaces`），Dashboard 会自动读取
