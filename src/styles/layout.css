@@ -1,0 +1,8 @@
+:root { --layout-page-width: 90rem; --layout-sidebar-width: 17.5rem; }
+#main-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+@media (min-width: 1280px) {
+  #main-grid { grid-template-columns: 17.5rem minmax(0,1fr); }
+}
+@media (min-width: 1920px) {
+  :root { --layout-page-width: clamp(104rem, 82vw, 132rem); --layout-sidebar-width: clamp(48rem, 40vw, 64rem); }
+}

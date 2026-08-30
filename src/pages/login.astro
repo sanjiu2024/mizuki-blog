@@ -1,0 +1,45 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+<BaseLayout title="Login — Mizuki">
+  <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
+    <div class="card-base enable-card-border p-6 sm:p-8 max-w-md mx-auto" style="border-radius: var(--radius-large);">
+      <h1 class="text-2xl font-bold mb-1">Welcome back</h1>
+      <p class="text-sm mb-6 opacity-60">登录后可发评论，解锁 Mizuki 深海。</p>
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="text-sm font-medium">Email</label>
+          <input name="email" type="email" required placeholder="you@mizuki.blog" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        </div>
+        <div>
+          <label class="text-sm font-medium">Password</label>
+          <input name="password" type="password" required placeholder="••••••••" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        </div>
+        <button type="submit" class="btn-regular w-full py-2.5 font-semibold">Login</button>
+        <p id="login-msg" class="text-sm hidden"></p>
+      </form>
+      <p class="text-sm mt-4 text-center opacity-60">No account? <a href="/register" class="underline" style="color: var(--primary);">Register</a></p>
+    </div>
+  </div>
+  <script is:inline>
+    const form = document.getElementById('login-form');
+    const msg = document.getElementById('login-msg');
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      msg.className = 'text-sm';
+      msg.textContent = 'Signing in...';
+      msg.classList.remove('hidden');
+      try {
+        const res = await fetch('/api/auth/sign-in/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: fd.get('email'), password: fd.get('password') }) });
+        const data = await res.json().catch(()=>({}));
+        if (!res.ok) throw new Error(data.message || data.error || 'Login failed');
+        msg.textContent = 'Success, redirecting...';
+        location.href = '/';
+      } catch (err) {
+        msg.textContent = err.message || String(err);
+        msg.classList.add('text-red-500');
+      }
+    });
+  </script>
+</BaseLayout>

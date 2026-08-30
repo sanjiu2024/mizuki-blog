@@ -1,0 +1,187 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { seedData } from "../../db/seed";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const slugStr = Array.isArray(slug) ? slug.join("/") : slug ?? "";
+
+type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; publishedAt?: number | null; createdAt: number; tags?: string[] };
+
+let post: PostRow | null = null;
+
+try {
+  const runtime: any = (Astro.locals as any)?.runtime;
+  const env = runtime?.env ?? (Astro.locals as any)?.env ?? {};
+  const db: D1Database | undefined = env.DB;
+  if (db && slugStr) {
+    const row = await db.prepare(
+      "SELECT id, slug, title, excerpt, content, published_at as publishedAt, created_at as createdAt FROM posts WHERE slug = ? AND status='published' LIMIT 1"
+    ).bind(slugStr).first<PostRow>();
+    if (row) {
+      const tagRes = await db.prepare("SELECT t.slug FROM tags t JOIN post_tags pt ON pt.tag_id=t.id WHERE pt.post_id=?").bind(row.id).all<{ slug: string }>();
+      const trows = (tagRes.results ?? tagRes) as any[];
+      post = { ...row, tags: trows.map((x: any) => x.slug) };
+    }
+  } else {
+    throw new Error("no db");
+  }
+} catch {
+  // fallback mock
+  const found = seedData.posts.find((p) => p.slug === slugStr);
+  if (found) {
+    post = {
+      id: found.id,
+      slug: found.slug,
+      title: found.title,
+      excerpt: found.excerpt,
+      content: found.content,
+      publishedAt: found.publishedAt,
+      createdAt: found.createdAt,
+      tags: seedData.postTags.filter((pt) => pt.postId === found.id).map((pt) => seedData.tags.find((t) => t.id === pt.tagId)?.slug ?? "").filter(Boolean),
+    };
+  }
+}
+
+if (!post) {
+  Astro.response.status = 404;
+}
+
+function markdownToHtml(md: string): string {
+  // minimal markdown: headings, bold, italic, code, links, paragraphs, lists
+  let html = md
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    // restore code blocks first
+    .replace(/```([\s\S]*?)```/g, (_m, code) => `<pre class="not-prose rounded-lg p-4 overflow-auto text-sm" style="background: oklch(0.18 0.02 var(--hue)); color: #e6e6e6;"><code>${code.trim()}</code></pre>`)
+    .replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded text-sm" style="background: var(--btn-regular-bg);">$1</code>')
+    .replace(/^### (.+)$/gm, '<h3 class="text-lg font-bold mt-6 mb-2">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold mt-8 mb-3">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-black mt-2 mb-4">$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="underline decoration-2 underline-offset-4" style="color: var(--primary);">$1</a>')
+    .replace(/^- (.+)$/gm, "<li>$1</li>");
+
+  // wrap loose lines into paragraphs (naive)
+  html = html.split(/\n{2,}/).map(block => {
+    const t = block.trim();
+    if (!t) return "";
+    if (t.startsWith("<h") || t.startsWith("<pre") || t.startsWith("<li") || t.startsWith("<ul")) return t;
+    if (t.startsWith("<li")) return `<ul class="list-disc pl-5 my-3 space-y-1">${t}</ul>`;
+    // if block contains <li> items, wrap
+    if (t.includes("<li>")) return `<ul class="list-disc pl-5 my-3 space-y-1">${t}</ul>`;
+    return `<p class="my-3 leading-relaxed">${t.replace(/\n/g, "<br/>")}</p>`;
+  }).join("\n");
+
+  return html;
+}
+
+const contentHtml = post ? markdownToHtml(post.content) : "";
+const dateLabel = post ? new Date((post.publishedAt ?? post.createdAt) as number).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "";
+---
+
+<BaseLayout title={post ? `${post.title} — Mizuki` : "Not found — Mizuki"} description={post?.excerpt ?? "Post not found"}>
+  <div class="col-span-1 lg:col-start-2 w-full min-w-0">
+    {post ? (
+      <article class="card-base enable-card-border p-6 sm:p-8 lg:p-10 onload-animation" style="border-radius: var(--radius-large);">
+        <a href="/" class="inline-flex items-center gap-1 text-sm mb-4 btn-plain px-2 py-1 -ml-2">← Back to home</a>
+
+        <header class="mb-6">
+          <h1 class="text-2xl sm:text-3xl lg:text-4xl font-black leading-tight tracking-tight" style="color: oklch(0.2 0.02 var(--hue));">
+            {post.title}
+          </h1>
+          <div class="mt-3 flex flex-wrap items-center gap-3 text-sm" style="color: oklch(0.5 0.02 var(--hue));">
+            <time>{dateLabel}</time>
+            {post.tags && post.tags.length > 0 && (
+              <span class="flex gap-1.5 flex-wrap">
+                {post.tags.map((t) => (
+                  <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium" style="background: var(--btn-regular-bg); color: var(--btn-content);">#{t}</span>
+                ))}
+              </span>
+            )}
+          </div>
+          {post.excerpt && (
+            <p class="mt-4 text-base leading-relaxed p-4 rounded-xl" style="background: var(--btn-regular-bg); color: oklch(0.4 0.02 var(--hue));">
+              {post.excerpt}
+            </p>
+          )}
+        </header>
+
+        <div class="prose prose-neutral dark:prose-invert max-w-none prose-headings:tracking-tight prose-a:decoration-2" set:html={contentHtml} />
+
+        <!-- Comments -->
+        <section class="mt-10 pt-8" style="border-top: 1px solid var(--line-divider);">
+          <h2 class="text-lg font-bold mb-3" style="color: var(--btn-content);">Comments</h2>
+          <div id="comments-root" data-post-id={post.id} class="space-y-4">
+            <div id="comments-list" class="space-y-3">
+              <p class="text-sm opacity-60">Loading comments...</p>
+            </div>
+            <form id="comment-form" class="card-base enable-card-border p-4 space-y-3" style="border-radius: var(--radius-large);">
+              <textarea id="comment-content" placeholder="Write a comment... (login required)" rows="3" class="w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
+              <div class="flex justify-between items-center">
+                <a href="/login" class="text-xs underline opacity-60">Login to comment</a>
+                <button type="submit" class="btn-regular px-5 py-2 text-sm font-semibold">Post comment</button>
+              </div>
+              <p id="comment-msg" class="text-xs hidden"></p>
+            </form>
+          </div>
+          <script is:inline define:vars={{ postId: post.id }}>
+            (async () => {
+              const list = document.getElementById('comments-list');
+              const form = document.getElementById('comment-form');
+              const input = document.getElementById('comment-content');
+              const msg = document.getElementById('comment-msg');
+              const load = async () => {
+                try {
+                  const res = await fetch(`/api/comments?postId=${postId}`);
+                  const data = await res.json();
+                  const cs = data.comments || [];
+                  if (!cs.length) { list.innerHTML = '<p class="text-sm opacity-60">No comments yet. Be the first!</p>'; return; }
+                  list.innerHTML = cs.map(c => `<div class="card-base p-3 text-sm" style="border-radius: 0.75rem; border: 1px solid var(--line-divider);"><div class="opacity-60 text-xs mb-1">${new Date(c.created_at).toLocaleString()}</div><div>${c.content.replace(/</g,'&lt;')}</div></div>`).join('');
+                } catch { list.innerHTML = '<p class="text-sm opacity-60">Failed to load.</p>'; }
+              };
+              await load();
+              form?.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const content = input.value.trim();
+                if (!content) return;
+                msg.classList.remove('hidden'); msg.textContent='Posting...'; msg.className='text-xs';
+                try {
+                  const res = await fetch('/api/comments', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ postId, content }) });
+                  const data = await res.json().catch(()=>({}));
+                  if (!res.ok) throw new Error(data.error || 'Failed');
+                  msg.textContent='Posted!'; input.value=''; await load();
+                } catch(err){ msg.textContent=err.message||String(err); msg.classList.add('text-red-500'); }
+                setTimeout(()=> msg.classList.add('hidden'), 2000);
+              });
+            })();
+          </script>
+        </section>
+      </article>
+    ) : (
+      <div class="card-base enable-card-border p-10 text-center" style="border-radius: var(--radius-large);">
+        <h1 class="text-2xl font-bold">404 — Post not found</h1>
+        <p class="text-sm mt-2 opacity-70">No post matches slug “{slugStr}”.</p>
+        <a href="/" class="btn-regular inline-flex mt-6 px-6 py-2.5 text-sm font-semibold">Go home</a>
+      </div>
+    )}
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="hidden lg:block lg:col-start-1">
+    <div class="sticky top-[4.5rem] space-y-4">
+      <div class="card-base enable-card-border p-5" style="border-radius: var(--radius-large);">
+        <h3 class="font-semibold text-sm mb-2" style="color: var(--btn-content);">Navigation</h3>
+        <ul class="space-y-1.5 text-sm">
+          <li><a href="/" class="btn-plain px-2 py-1 inline-flex w-full">← All posts</a></li>
+          <li><a href="/api/posts" class="btn-plain px-2 py-1 inline-flex w-full">API</a></li>
+        </ul>
+      </div>
+    </div>
+  </aside>
+</BaseLayout>
+
+<style is:global>
+  :root.dark article h1 { color: oklch(0.96 0.015 var(--hue)) !important; }
+</style>

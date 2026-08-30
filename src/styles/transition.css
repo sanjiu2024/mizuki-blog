@@ -1,0 +1,17 @@
+:root {
+  --transition-duration: 120ms;
+  --transition-easing: cubic-bezier(0.25,0.46,0.45,0.94);
+  --transition-easing-out: cubic-bezier(0.55,0.055,0.675,0.19);
+  --transition-translate: 1.5rem;
+  --transition-stagger: 35ms;
+}
+@media (width < 768px) {
+  :root { --transition-translate: 0.5rem; --transition-duration: 150ms; }
+}
+::view-transition-old(root) { animation: theme-fade-out 0.25s ease-out; }
+::view-transition-new(root) { animation: theme-fade-in 0.25s ease-in; }
+@keyframes theme-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes theme-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.card-base, .float-panel { transition: background-color 150ms, border-color 150ms; }
+.onload-animation { animation: fade-in-up var(--transition-duration) var(--transition-easing) both; }
+@keyframes fade-in-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

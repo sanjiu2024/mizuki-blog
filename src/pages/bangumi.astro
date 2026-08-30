@@ -1,0 +1,19 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+<BaseLayout title="追番 — Mizuki">
+  <div class="col-span-1 lg:col-start-2 py-8">
+    <div class="card-base enable-card-border p-6 sm:p-8" style="border-radius: var(--radius-large);">
+      <h1 class="text-2xl font-bold mb-2">追番</h1>
+      <p class="text-sm opacity-60">二次元特色页占位，可接入 Bangumi/Bilibili API。</p>
+      <div class="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {[1,2,3,4,5,6].map((i)=> (
+          <div class="rounded-xl overflow-hidden border" style="border-color: var(--line-divider);">
+            <div class="aspect-[3/4] bg-depth flex items-center justify-center text-white/60 text-sm">Cover {i}</div>
+            <div class="p-3"><div class="font-medium text-sm">番剧 {i}</div><div class="text-xs opacity-60">2026 · 12 eps</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</BaseLayout>

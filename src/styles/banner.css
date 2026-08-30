@@ -1,0 +1,24 @@
+/* Mizuki Banner - 65vh + 轮播 + 4层波浪 */
+#banner-wrapper { position: absolute; z-index: 10; width: 100%; transition: all 700ms; overflow: hidden; top: -30vh; }
+#banner-carousel { position: relative; height: 100%; width: 100%; }
+.banner-image-slot-mobile { position: absolute; inset: 0; display: block; }
+@media (min-width: 768px) { .banner-image-slot-mobile { display: none; } }
+#banner { position: absolute; inset: 0; display: none; }
+@media (min-width: 768px) { #banner { display: block; } }
+.banner-text-overlay { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.banner-title { font-size: 3.2rem; color: white; text-shadow: 0 2px 12px rgba(0,0,0,0.4); font-weight: 800; }
+.banner-subtitle { font-size: 1.1rem; color: rgba(255,255,255,0.9); margin-top: 0.5rem; }
+@media (min-width: 480px) { .banner-title { font-size: 3.8rem; } }
+@media (min-width: 768px) { .banner-title { font-size: 4rem; } }
+@media (min-width: 1280px) { .banner-title { font-size: 6rem; } }
+.banner-kb { animation: bannerKenBurns calc(var(--interval,3000ms) + 1200ms) ease-out forwards; }
+@keyframes bannerKenBurns { 0% { transform: scale(1.03); } 100% { transform: scale(1.13); } }
+#header-waves { position: absolute; bottom: -1px; height: 10vh; width: 100%; }
+@media (min-width: 768px) { #header-waves { height: 12vh; } }
+@media (min-width: 1280px) { #header-waves { height: 15vh; } }
+.waves .parallax use { animation: move-forever 25s cubic-bezier(.55,.5,.45,.5) infinite; }
+.waves .parallax use:nth-child(1) { animation-delay: -2s; animation-duration: 7s; opacity: 0.25; }
+.waves .parallax use:nth-child(2) { animation-delay: -3s; animation-duration: 10s; opacity: 0.5; }
+.waves .parallax use:nth-child(3) { animation-delay: -4s; animation-duration: 13s; opacity: 0.75; }
+.waves .parallax use:nth-child(4) { animation-delay: -5s; animation-duration: 20s; opacity: 1; }
+@keyframes move-forever { 0% { transform: translate3d(-90px,0,0); } 100% { transform: translate3d(85px,0,0); } }

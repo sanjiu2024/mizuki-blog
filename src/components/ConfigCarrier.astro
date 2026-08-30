@@ -1,0 +1,14 @@
+---
+const hue = 240;
+---
+<div id="config-carrier" data-hue={hue} data-default-wallpaper-mode="banner" data-overlay-opacity="0.8" data-overlay-blur="1.5"></div>
+<script is:inline>
+  (function () {
+    const hue = localStorage.getItem("hue") || "240";
+    document.documentElement.style.setProperty("--hue", hue);
+    document.documentElement.setAttribute("data-hue", hue);
+    const carrier = document.getElementById("config-carrier");
+    if (carrier) carrier.setAttribute("data-hue", hue);
+  })();
+</script>
+<style define:vars={{ configHue: hue, pageWidth: "90rem" }}></style>

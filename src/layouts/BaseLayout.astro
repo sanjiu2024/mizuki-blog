@@ -1,0 +1,79 @@
+---
+import ConfigCarrier from "../components/ConfigCarrier.astro";
+import ThemeToggle from "../components/ThemeToggle.astro";
+import { ClientRouter } from "astro:transitions";
+import "../styles/tokens.css";
+import "../styles/banner.css";
+import "../styles/transition.css";
+import "../styles/layout.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — deep sea of thoughts on Cloudflare Workers." } = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <ClientRouter />
+    <script is:inline>
+      // early hue apply before paint
+      try {
+        const h = localStorage.getItem("hue") || "240";
+        document.documentElement.style.setProperty("--hue", h);
+      } catch {}
+    </script>
+    <!-- Swup placeholder: future page transition via swup / view transitions -->
+  </head>
+  <body class="min-h-screen antialiased overflow-x-hidden selection:bg-[var(--selection-bg)]">
+    <ConfigCarrier />
+
+    <!-- Header -->
+    <header
+      class="sticky top-0 z-40 backdrop-blur-xl border-b"
+      style="background: color-mix(in oklch, var(--card-bg) 82%, transparent); border-color: var(--line-divider);"
+    >
+      <nav class="mx-auto flex h-14 max-w-[var(--layout-page-width)] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <a href="/" class="flex items-center gap-2 font-bold text-lg tracking-tight" style="color: var(--btn-content);">
+          <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white text-xs font-black" style="background: var(--primary);">M</span>
+          Mizuki
+        </a>
+        <div class="flex items-center gap-1 sm:gap-2">
+          <a href="/" class="btn-plain px-3 py-1.5 text-sm font-medium">Home</a>
+          <a href="/tags" class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">Tags</a>
+          <a href="/rss.xml" class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">RSS</a>
+          <ThemeToggle />
+        </div>
+      </nav>
+    </header>
+
+    <!-- Main grid slot -->
+    <main id="main-grid" class="mx-auto max-w-[var(--layout-page-width)] px-4 sm:px-6 lg:px-8 pb-12">
+      <slot />
+    </main>
+
+    <footer class="mx-auto max-w-[var(--layout-page-width)] px-4 sm:px-6 lg:px-8 py-8 text-center text-sm" style="color: oklch(0.55 0.02 var(--hue)); border-top: 1px solid var(--line-divider);">
+      <p>© {new Date().getFullYear()} Mizuki — Built with Astro 7 & Cloudflare Workers.</p>
+      <p class="mt-1 opacity-60">わたしの部屋 · Deep sea of thoughts</p>
+    </footer>
+
+    <script is:inline>
+      // Swup placeholder hook — view transitions handle navigation for now
+      document.addEventListener("astro:page-load", () => {
+        try {
+          const h = localStorage.getItem("hue") || "240";
+          document.documentElement.style.setProperty("--hue", h);
+        } catch {}
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,37 @@
+---
+export const prerender = false;
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+const stmt = d1.prepare(`
+  SELECT t.id, t.name, t.slug, COUNT(pt.post_id) as cnt
+  FROM tags t
+  LEFT JOIN post_tags pt ON pt.tag_id = t.id
+  GROUP BY t.id
+  ORDER BY cnt DESC, t.name ASC
+`);
+const res = await stmt.all();
+const tags = (res.results ?? res) as Array<{ id: string; name: string; slug: string; cnt: number }>;
+---
+
+<BaseLayout title="Tags — Mizuki Blog" description="Browse posts by tag">
+  <section class="py-8">
+    <h1 class="text-2xl font-bold mb-6">Tags</h1>
+    {tags.length === 0 ? (
+      <p class="opacity-60">No tags yet.</p>
+    ) : (
+      <div class="flex flex-wrap gap-3">
+        {tags.map((t) => (
+          <a
+            href={`/tags/${t.slug}`}
+            class="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors hover:opacity-80"
+            style="background: var(--card-bg); border-color: var(--line-divider); color: var(--btn-content);"
+          >
+            #{t.name}
+            <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full text-xs px-1.5" style="background: var(--primary); color: white;">{t.cnt}</span>
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
+</BaseLayout>

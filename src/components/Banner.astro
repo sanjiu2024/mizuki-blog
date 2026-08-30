@@ -1,0 +1,89 @@
+---
+interface Props {
+  title?: string;
+  subtitle?: string;
+  subtitles?: string[];
+}
+const {
+  title = "わたしの部屋",
+  subtitle = "Deep sea of thoughts — Mizuki's corner on the edge.",
+  subtitles = [],
+} = Astro.props as Props;
+const displaySubtitles = subtitles.length ? subtitles : [subtitle, "Fragments from the abyss.", "Astro 7 on Cloudflare Workers."];
+---
+<div
+  id="banner-wrapper"
+  class="relative w-full overflow-hidden bg-depth"
+  style="height: 65vh; min-height: 380px; max-height: 720px; top: 0;"
+>
+  <!-- Banner background depth + optional overlay -->
+  <div class="absolute inset-0 bg-depth"></div>
+  <!-- subtle radial highlight -->
+  <div class="absolute inset-0" style="background: radial-gradient(ellipse 80% 60% at 50% 10%, rgba(122,196,232,0.18), transparent 60%), radial-gradient(ellipse 60% 50% at 85% 70%, rgba(232,160,200,0.12), transparent 60%);"></div>
+
+  <!-- Text overlay -->
+  <div class="banner-text-overlay px-4">
+    <h1 class="banner-title font-black tracking-tight leading-none">
+      {title}
+    </h1>
+    <div class="banner-subtitle mt-3 max-w-2xl px-4">
+      <span id="banner-subtitle" class="inline-block text-white/90 text-[1.05rem] sm:text-lg leading-relaxed">
+        {displaySubtitles[0]}
+      </span>
+      <!-- subtitle carousel placeholder — T05 will hydrate -->
+      <span id="banner-subtitle-carousel" class="hidden" data-subtitles={JSON.stringify(displaySubtitles)}></span>
+    </div>
+    <div class="mt-6 flex items-center gap-3">
+      <a href="#post-list" class="btn-regular px-6 py-2.5 text-sm font-semibold shadow-lg shadow-black/20">Explore posts</a>
+      <a href="/posts/hello-mizuki" class="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white backdrop-blur hover:bg-white/15 transition">Read intro →</a>
+    </div>
+  </div>
+
+  <!-- 4-layer wave SVG — header-waves -->
+  <svg id="header-waves" class="waves absolute bottom-0 left-0 w-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 24 150 28" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <path id="gentle-wave" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z"></path>
+    </defs>
+    <g class="parallax">
+      <use href="#gentle-wave" x="48" y="0" fill="color-mix(in oklch, var(--page-bg) 92%, transparent)" style="opacity:0.25"></use>
+      <use href="#gentle-wave" x="48" y="3" fill="var(--page-bg)" style="opacity:0.5"></use>
+      <use href="#gentle-wave" x="48" y="5" fill="var(--page-bg)" style="opacity:0.75"></use>
+      <use href="#gentle-wave" x="48" y="7" fill="var(--page-bg)" style="opacity:1"></use>
+    </g>
+  </svg>
+</div>
+
+<!-- spacer to push content below absolute banner when used inside BaseLayout -->
+<div aria-hidden="true" style="height: 65vh; min-height: 380px; max-height: 720px; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);"></div>
+
+<style>
+  /* responsive height tuning */
+  @media (max-width: 768px) {
+    #banner-wrapper { height: 55vh !important; min-height: 320px !important; }
+    div[aria-hidden="true"] { height: 55vh !important; min-height: 320px !important; }
+  }
+  @media (max-height: 600px) {
+    #banner-wrapper { height: 70vh !important; }
+    div[aria-hidden="true"] { height: 70vh !important; }
+  }
+</style>
+
+<script is:inline>
+  // ultra-light subtitle rotation (no framework) — progressive enhancement
+  (function(){
+    const el = document.getElementById('banner-subtitle');
+    const holder = document.getElementById('banner-subtitle-carousel');
+    if(!el || !holder) return;
+    try {
+      const list = JSON.parse(holder.getAttribute('data-subtitles') || '[]');
+      if(list.length <= 1) return;
+      let i = 0;
+      setInterval(() => {
+        i = (i+1) % list.length;
+        el.style.opacity = '0';
+        setTimeout(() => { el.textContent = list[i]; el.style.opacity = '1'; }, 260);
+      }, 3200);
+      el.style.transition = 'opacity 260ms ease';
+    } catch {}
+  })();
+</script>

@@ -1,0 +1,58 @@
+---
+export const prerender = false;
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const { tag } = Astro.params;
+if (!tag) return Astro.redirect("/tags");
+
+const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+
+const tagStmt = d1.prepare("SELECT id, name, slug FROM tags WHERE slug = ? LIMIT 1");
+const tagRes = await tagStmt.bind(tag).all();
+const rows = (tagRes.results ?? tagRes) as Array<{ id: string; name: string; slug: string }>;
+const tagRow = rows[0];
+
+// If tag not found, show empty state
+let posts: Array<{ id: string; slug: string; title: string; excerpt: string | null; published_at: number | null }> = [];
+if (tagRow) {
+  const postStmt = d1.prepare(`
+    SELECT p.id, p.slug, p.title, p.excerpt, p.published_at
+    FROM posts p
+    JOIN post_tags pt ON pt.post_id = p.id
+    WHERE pt.tag_id = ?
+    ORDER BY p.published_at DESC
+  `);
+  const postRes = await postStmt.bind(tagRow.id).all();
+  posts = (postRes.results ?? postRes) as typeof posts;
+}
+---
+
+<BaseLayout title={tagRow ? `#${tagRow.name} — Mizuki Blog` : "Tag not found"} description={tagRow ? `Posts tagged ${tagRow.name}` : "Tag not found"}>
+  <section class="py-8">
+    {tagRow ? (
+      <>
+        <h1 class="text-2xl font-bold mb-2">#{tagRow.name}</h1>
+        <p class="text-sm opacity-60 mb-6">{posts.length} post{posts.length !== 1 ? "s" : ""}</p>
+        {posts.length === 0 ? (
+          <p class="opacity-60">No posts for this tag yet.</p>
+        ) : (
+          <ul class="grid gap-4">
+            {posts.map((p) => (
+              <li class="rounded-xl border p-5 transition-colors hover:opacity-90" style="background: var(--card-bg); border-color: var(--line-divider);">
+                <a href={`/posts/${p.slug}/`} class="text-lg font-semibold hover:underline" style="color: var(--btn-content);">{p.title}</a>
+                {p.excerpt && <p class="mt-1 text-sm opacity-70">{p.excerpt}</p>}
+                {p.published_at && <time class="mt-2 block text-xs opacity-50">{new Date(p.published_at).toLocaleDateString("zh-CN")}</time>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    ) : (
+      <>
+        <h1 class="text-2xl font-bold mb-4">Tag not found</h1>
+        <p class="opacity-60">No tag named "{tag}" exists.</p>
+        <a href="/tags" class="mt-4 inline-block text-sm underline">Browse all tags</a>
+      </>
+    )}
+  </section>
+</BaseLayout>

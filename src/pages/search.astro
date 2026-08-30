@@ -1,0 +1,69 @@
+---
+export const prerender = false;
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { searchPosts } from "../db/search";
+
+const q = Astro.url.searchParams.get("q")?.trim() ?? "";
+let results: any[] = [];
+if (q) {
+  const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+  results = await searchPosts(d1, q, 20);
+}
+---
+
+<BaseLayout title={q ? `Search: ${q} — Mizuki Blog` : "Search — Mizuki Blog"} description="Search posts">
+  <section class="py-8">
+    <h1 class="text-2xl font-bold mb-4">Search</h1>
+    <form method="GET" action="/search" class="flex gap-2 mb-6">
+      <input
+        type="search"
+        name="q"
+        value={q}
+        placeholder="Search posts…"
+        class="flex-1 rounded-lg border px-4 py-2 text-sm outline-none focus:ring-2"
+        style="background: var(--card-bg); border-color: var(--line-divider);"
+      />
+      <button type="submit" class="btn-regular px-5 py-2 text-sm font-medium">Search</button>
+    </form>
+
+    {!q ? (
+      <p class="opacity-60 text-sm">Enter a keyword to search. Try <a href="/search?q=mizuki" class="underline">mizuki</a> or <a href="/search?q=astro" class="underline">astro</a>.</p>
+    ) : results.length === 0 ? (
+      <p class="opacity-60">No results for "<strong>{q}</strong>".</p>
+    ) : (
+      <>
+        <p class="text-sm opacity-60 mb-4">{results.length} result{results.length !== 1 ? "s" : ""} for "<strong>{q}</strong>"</p>
+        <ul class="grid gap-4">
+          {results.map((r) => (
+            <li class="rounded-xl border p-5" style="background: var(--card-bg); border-color: var(--line-divider);">
+              <a href={`/posts/${r.slug}/`} class="text-lg font-semibold hover:underline" style="color: var(--btn-content);">{r.title}</a>
+              {r.snippet && <p class="mt-1 text-sm opacity-70" set:html={r.snippet}></p>}
+              {!r.snippet && r.excerpt && <p class="mt-1 text-sm opacity-70">{r.excerpt}</p>}
+              <span class="mt-2 inline-block text-xs opacity-40">rank: {r.rank}</span>
+            </li>
+          ))}
+        </ul>
+      </>
+    )}
+  </section>
+
+  <script is:inline>
+    // Progressive enhancement: live search via /api/search
+    const input = document.querySelector('input[name="q"]');
+    if (input) {
+      let t;
+      input.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(async () => {
+          const q = input.value.trim();
+          if (!q) return;
+          try {
+            const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            console.log('live search', data);
+          } catch {}
+        }, 300);
+      });
+    }
+  </script>
+</BaseLayout>

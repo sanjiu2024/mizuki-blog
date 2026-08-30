@@ -1,0 +1,65 @@
+---
+export const prerender = false;
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
+
+const ymStmt = d1.prepare(`
+  SELECT strftime('%Y-%m', datetime(published_at, 'unixepoch')) as ym, count(*) as cnt
+  FROM posts
+  WHERE published_at IS NOT NULL
+  GROUP BY ym
+  ORDER BY ym DESC
+`);
+const ymRes = await ymStmt.all();
+const groups = (ymRes.results ?? ymRes) as Array<{ ym: string; cnt: number }>;
+
+// Also fetch all posts ordered for timeline
+const postsStmt = d1.prepare(`
+  SELECT id, slug, title, excerpt, published_at,
+         strftime('%Y-%m', datetime(published_at, 'unixepoch')) as ym
+  FROM posts
+  WHERE published_at IS NOT NULL
+  ORDER BY published_at DESC
+`);
+const postsRes = await postsStmt.all();
+const posts = (postsRes.results ?? postsRes) as Array<{ id: string; slug: string; title: string; excerpt: string | null; published_at: number; ym: string }>;
+
+// Map ym -> posts
+const grouped = new Map<string, typeof posts>();
+for (const p of posts) {
+  if (!grouped.has(p.ym)) grouped.set(p.ym, []);
+  grouped.get(p.ym)!.push(p);
+}
+---
+
+<BaseLayout title="Archive — Mizuki Blog" description="Post archive by month">
+  <section class="py-8">
+    <h1 class="text-2xl font-bold mb-6">Archive</h1>
+    {groups.length === 0 ? (
+      <p class="opacity-60">No posts yet.</p>
+    ) : (
+      <div class="relative">
+        <!-- timeline line -->
+        <div class="absolute left-2 top-0 bottom-0 w-px" style="background: var(--line-divider);"></div>
+        {groups.map((g) => (
+          <div class="relative pl-8 pb-8">
+            <span class="absolute left-0 top-1 h-4 w-4 rounded-full border-2 bg-white" style="border-color: var(--primary);"></span>
+            <h2 class="text-sm font-bold tracking-widest uppercase opacity-60 mb-3">
+              {g.ym} <span class="ml-2 font-normal">({g.cnt})</span>
+            </h2>
+            <ul class="space-y-3">
+              {(grouped.get(g.ym) ?? []).map((p) => (
+                <li class="rounded-lg border px-4 py-3" style="background: var(--card-bg); border-color: var(--line-divider);">
+                  <a href={`/posts/${p.slug}/`} class="font-medium hover:underline" style="color: var(--btn-content);">{p.title}</a>
+                  {p.excerpt && <p class="mt-1 text-sm opacity-60 line-clamp-2">{p.excerpt}</p>}
+                  <time class="mt-1 block text-xs opacity-40">{new Date(p.published_at).toLocaleDateString("zh-CN")}</time>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+</BaseLayout>

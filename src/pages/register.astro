@@ -1,0 +1,49 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+<BaseLayout title="Register — Mizuki">
+  <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
+    <div class="card-base enable-card-border p-6 sm:p-8 max-w-md mx-auto" style="border-radius: var(--radius-large);">
+      <h1 class="text-2xl font-bold mb-1">Create account</h1>
+      <p class="text-sm mb-6 opacity-60">注册后即可评论与互动。</p>
+      <form id="register-form" class="space-y-4">
+        <div>
+          <label class="text-sm font-medium">Name</label>
+          <input name="name" type="text" placeholder="Mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        </div>
+        <div>
+          <label class="text-sm font-medium">Email</label>
+          <input name="email" type="email" required placeholder="you@mizuki.blog" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        </div>
+        <div>
+          <label class="text-sm font-medium">Password</label>
+          <input name="password" type="password" required placeholder="≥8 chars" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        </div>
+        <button type="submit" class="btn-regular w-full py-2.5 font-semibold">Create account</button>
+        <p id="register-msg" class="text-sm hidden"></p>
+      </form>
+      <p class="text-sm mt-4 text-center opacity-60">Already have account? <a href="/login" class="underline" style="color: var(--primary);">Login</a></p>
+    </div>
+  </div>
+  <script is:inline>
+    const form = document.getElementById('register-form');
+    const msg = document.getElementById('register-msg');
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      msg.className = 'text-sm';
+      msg.textContent = 'Creating...';
+      msg.classList.remove('hidden');
+      try {
+        const res = await fetch('/api/auth/sign-up/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: fd.get('name') || undefined, email: fd.get('email'), password: fd.get('password') }) });
+        const data = await res.json().catch(()=>({}));
+        if (!res.ok) throw new Error(data.message || data.error || 'Register failed');
+        msg.textContent = 'Success, redirecting to login...';
+        setTimeout(()=> location.href='/login', 800);
+      } catch (err) {
+        msg.textContent = err.message || String(err);
+        msg.classList.add('text-red-500');
+      }
+    });
+  </script>
+</BaseLayout>

@@ -1,0 +1,163 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Banner from "../components/Banner.astro";
+import Card from "../components/Card.astro";
+import { seedData } from "../db/seed";
+
+// Pagination
+const url = new URL(Astro.request.url);
+const pageParam = url.searchParams.get("page");
+let page = parseInt(pageParam || "1", 10);
+if (Number.isNaN(page) || page < 1) page = 1;
+const limit = 10;
+const offset = (page - 1) * limit;
+
+// Try D1 first, fallback to seedData mock
+type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; publishedAt?: number | null; createdAt: number; tags?: string[] };
+
+let posts: PostRow[] = [];
+let total = 0;
+let usedMock = false;
+
+try {
+  const runtime: any = (Astro.locals as any)?.runtime;
+  const env = runtime?.env ?? (Astro.locals as any)?.env ?? {};
+  const db: D1Database | undefined = env.DB;
+
+  if (db) {
+    // fetch paginated published posts
+    const countRes = await db.prepare("SELECT COUNT(*) as cnt FROM posts WHERE status = 'published'").first<{ cnt: number }>();
+    total = countRes?.cnt ?? 0;
+    const res = await db.prepare(
+      "SELECT id, slug, title, excerpt, content, published_at as publishedAt, created_at as createdAt FROM posts WHERE status='published' ORDER BY published_at DESC, created_at DESC LIMIT ? OFFSET ?"
+    ).bind(limit, offset).all<PostRow>();
+    const rows = (res.results ?? res) as any[];
+    // fetch tags per post (N+1 small, ok for 10)
+    for (const r of rows) {
+      const tagRes = await db.prepare(
+        "SELECT t.slug FROM tags t JOIN post_tags pt ON pt.tag_id = t.id WHERE pt.post_id = ?"
+      ).bind(r.id).all<{ slug: string }>();
+      const trows = (tagRes.results ?? tagRes) as any[];
+      posts.push({ ...r, tags: trows.map((x: any) => x.slug) });
+    }
+    if (posts.length === 0 && total === 0) {
+      // empty DB -> fallback to mock
+      throw new Error("empty db");
+    }
+  } else {
+    throw new Error("no D1");
+  }
+} catch {
+  usedMock = true;
+  const all = seedData.posts.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    title: p.title,
+    excerpt: p.excerpt,
+    content: p.content,
+    publishedAt: p.publishedAt,
+    createdAt: p.createdAt,
+    tags: seedData.postTags.filter((pt) => pt.postId === p.id).map((pt) => {
+      const tag = seedData.tags.find((t) => t.id === pt.tagId);
+      return tag?.slug ?? "";
+    }).filter(Boolean),
+  }));
+  total = all.length;
+  posts = all.slice(offset, offset + limit);
+}
+
+const totalPages = Math.max(1, Math.ceil(total / limit));
+if (page > totalPages) page = totalPages;
+
+const hasPrev = page > 1;
+const hasNext = page < totalPages;
+---
+
+<BaseLayout title="Mizuki — わたしの部屋">
+  <!-- Banner full-bleed -->
+  <div style="grid-column: 1 / -1; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw); margin-top: calc(-1rem);">
+    <Banner />
+  </div>
+
+  <!-- Content area -->
+  <div class="col-span-1 lg:col-start-2 w-full min-w-0">
+    <div id="post-list" class="pt-6 scroll-mt-20">
+      <div class="flex items-baseline justify-between mb-4">
+        <h2 class="text-xl font-bold tracking-tight" style="color: oklch(0.25 0.02 var(--hue));">Latest posts</h2>
+        <span class="text-xs font-medium px-2.5 py-1 rounded-full" style="background: var(--btn-regular-bg); color: var(--btn-content);">
+          {total} posts · page {page}/{totalPages}
+        </span>
+      </div>
+
+      {posts.length === 0 ? (
+        <div class="card-base enable-card-border p-10 text-center" style="border-radius: var(--radius-large);">
+          <p class="text-lg font-semibold" style="color: oklch(0.45 0.03 var(--hue));">まだ記事がありません</p>
+          <p class="text-sm mt-2" style="color: oklch(0.55 0.02 var(--hue));">No posts yet — check back soon, or seed the database.</p>
+          {usedMock && <p class="text-xs mt-3 opacity-60">Showing mock data (DB unavailable).</p>}
+        </div>
+      ) : (
+        <div class="grid gap-4 sm:gap-5">
+          {posts.map((post) => (
+            <Card
+              href={`/posts/${post.slug}`}
+              title={post.title}
+              excerpt={post.excerpt}
+              date={post.publishedAt ?? post.createdAt}
+              tags={post.tags ?? []}
+            />
+          ))}
+        </div>
+      )}
+
+      <!-- Pagination -->
+      {totalPages > 1 && (
+        <nav class="mt-8 flex items-center justify-between gap-2" aria-label="Pagination">
+          <a
+            href={hasPrev ? `/?page=${page - 1}#post-list` : undefined}
+            aria-disabled={!hasPrev}
+            class:list={["btn-regular px-4 py-2 text-sm font-medium", !hasPrev && "pointer-events-none opacity-40"]}
+          >
+            ← Prev
+          </a>
+          <div class="flex items-center gap-1.5">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+              <a
+                href={`/?page=${n}#post-list`}
+                aria-current={n === page ? "page" : undefined}
+                class:list={["inline-flex h-8 min-w-8 items-center justify-center rounded-full text-sm font-medium transition", n === page ? "text-white shadow" : "btn-plain"]}
+                style={n === page ? "background: var(--primary);" : undefined}
+              >
+                {n}
+              </a>
+            ))}
+          </div>
+          <a
+            href={hasNext ? `/?page=${page + 1}#post-list` : undefined}
+            aria-disabled={!hasNext}
+            class:list={["btn-regular px-4 py-2 text-sm font-medium", !hasNext && "pointer-events-none opacity-40"]}
+          >
+            Next →
+          </a>
+        </nav>
+      )}
+    </div>
+  </div>
+
+  <!-- Sidebar placeholder (desktop only) -->
+  <aside class="hidden lg:block lg:col-start-1 lg:row-start-2">
+    <div class="sticky top-[4.5rem] space-y-4">
+      <div class="card-base enable-card-border p-5" style="border-radius: var(--radius-large);">
+        <h3 class="font-semibold text-sm mb-2" style="color: var(--btn-content);">About</h3>
+        <p class="text-sm leading-relaxed" style="color: oklch(0.5 0.02 var(--hue));">Mizuki's deep-sea corner — Astro 7 on Cloudflare Workers. わたしの部屋へようこそ。</p>
+      </div>
+      <div class="card-base enable-card-border p-5" style="border-radius: var(--radius-large);">
+        <h3 class="font-semibold text-sm mb-3" style="color: var(--btn-content);">Links</h3>
+        <ul class="space-y-1.5 text-sm">
+          <li><a href="/" class="btn-plain px-2 py-1 inline-flex">Home</a></li>
+          <li><a href="/posts/hello-mizuki" class="btn-plain px-2 py-1 inline-flex">Hello Mizuki</a></li>
+          <li><a href="/api/posts" class="btn-plain px-2 py-1 inline-flex">API /posts</a></li>
+        </ul>
+      </div>
+    </div>
+  </aside>
+</BaseLayout>

@@ -1,0 +1,21 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+<BaseLayout title="Friends — Mizuki">
+  <div class="col-span-1 lg:col-start-2 py-8">
+    <div class="card-base enable-card-border p-6 sm:p-8" style="border-radius: var(--radius-large);">
+      <h1 class="text-2xl font-bold mb-2">友链</h1>
+      <p class="text-sm opacity-60 mb-6">Mizuki 风格友链卡片，M3 圆角 + 荧光边框。</p>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a href="https://astro.build" target="_blank" class="card-base p-4 hover:shadow-md transition flex gap-3" style="border-radius: var(--radius-large); border: 1px solid var(--line-divider);">
+          <img src="https://astro.build/favicon.svg" class="h-10 w-10 rounded-lg" alt="Astro" />
+          <div><div class="font-semibold text-sm">Astro</div><div class="text-xs opacity-60">Build faster websites</div></div>
+        </a>
+        <a href="https://developers.cloudflare.com/workers/" target="_blank" class="card-base p-4 hover:shadow-md transition flex gap-3" style="border-radius: var(--radius-large); border: 1px solid var(--line-divider);">
+          <div class="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold" style="background: var(--primary);">CF</div>
+          <div><div class="font-semibold text-sm">Cloudflare Workers</div><div class="text-xs opacity-60">Deploy on the edge</div></div>
+        </a>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

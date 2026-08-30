@@ -1,0 +1,23 @@
+<button id="theme-toggle" type="button" aria-label="Toggle theme" class="btn-regular inline-flex h-8 w-8 items-center justify-center" title="Toggle dark mode">◐</button>
+<script is:inline>
+  (function () {
+    const btn = document.getElementById('theme-toggle');
+    const apply = (dark) => {
+      document.documentElement.classList.toggle('dark', dark);
+      localStorage.setItem('theme', dark ? 'dark' : 'light');
+    };
+    const saved = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    apply(saved ? saved === 'dark' : prefersDark);
+    btn?.addEventListener('click', () => apply(!document.documentElement.classList.contains('dark')));
+    btn?.addEventListener('click', () => {
+      const hue = prompt('Hue 0-360 (Mizuki default 240)', localStorage.getItem('hue') || '240');
+      if (hue !== null) {
+        const n = Math.max(0, Math.min(360, parseInt(hue,10)||240));
+        localStorage.setItem('hue', String(n));
+        document.documentElement.style.setProperty('--hue', String(n));
+        document.getElementById('config-carrier')?.setAttribute('data-hue', String(n));
+      }
+    });
+  })();
+</script>
