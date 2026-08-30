@@ -1,0 +1,23 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+<BaseLayout title="Diary — Mizuki" description="日常 · Diary">
+  <div class="col-span-1 lg:col-start-2 py-8">
+    <div class="card-base enable-card-border p-6 sm:p-8" style="border-radius: var(--radius-large);">
+      <h1 class="text-2xl font-bold mb-2">Diary</h1>
+      <p class="text-sm opacity-60 mb-6">记录日常，像深海日志本 —— 支持 Markdown 时间线占位。</p>
+      <div class="space-y-4">
+        <article class="rounded-xl border p-4" style="border-color: var(--line-divider); background: var(--card-bg);">
+          <time class="text-xs opacity-40">2026-08-30</time>
+          <h2 class="font-semibold mt-1">首篇 Diary</h2>
+          <p class="text-sm opacity-70 mt-1">今天把 Mizuki 视觉 Token 完整移植到 Astro 7 + Workers，色调 hue=240。</p>
+        </article>
+        <article class="rounded-xl border p-4" style="border-color: var(--line-divider); background: var(--card-bg);">
+          <time class="text-xs opacity-40">2026-08-29</time>
+          <h2 class="font-semibold mt-1">深海初探</h2>
+          <p class="text-sm opacity-70 mt-1">在 oklch 里调色，像在深海里选光。</p>
+        </article>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

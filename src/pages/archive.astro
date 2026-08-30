@@ -5,7 +5,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
 
 const ymStmt = d1.prepare(`
-  SELECT strftime('%Y-%m', datetime(published_at, 'unixepoch')) as ym, count(*) as cnt
+  SELECT strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym, count(*) as cnt
   FROM posts
   WHERE published_at IS NOT NULL
   GROUP BY ym
@@ -17,7 +17,7 @@ const groups = (ymRes.results ?? ymRes) as Array<{ ym: string; cnt: number }>;
 // Also fetch all posts ordered for timeline
 const postsStmt = d1.prepare(`
   SELECT id, slug, title, excerpt, published_at,
-         strftime('%Y-%m', datetime(published_at, 'unixepoch')) as ym
+         strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym
   FROM posts
   WHERE published_at IS NOT NULL
   ORDER BY published_at DESC
