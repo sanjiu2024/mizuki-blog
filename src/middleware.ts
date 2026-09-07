@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from "astro";
 import { auth } from "./auth";
+import { canAccess, normalizeRole } from "./lib/rbac";
 
 export const onRequest: MiddlewareHandler = async (context, next) => {
   const url = new URL(context.request.url);
@@ -16,10 +17,9 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
         const row = await (db as any).query.users.findFirst({
           where: (u: any, { eq }: any) => eq(u.id, user.id),
         });
-        if (row?.role) user.role = row.role;
-        else if (!user.role) user.role = "user";
+        user.role = normalizeRole(row?.role ?? user.role);
       } catch {
-        if (!user.role) user.role = "user";
+        user.role = normalizeRole(user.role);
       }
     }
     (context.locals as any).user = user;
@@ -29,14 +29,18 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
     (context.locals as any).session = null;
   }
 
-  // Admin protection
-  if (url.pathname.startsWith("/admin")) {
+  if (
+    url.pathname.startsWith("/admin") ||
+    url.pathname.startsWith("/author") ||
+    url.pathname.startsWith("/inspector") ||
+    url.pathname.startsWith("/super") ||
+    url.pathname.startsWith("/api/admin")
+  ) {
     if (!user) {
       return context.redirect("/login", 302);
     }
-    const role = user.role ?? "user";
-    if (role !== "admin") {
-      return new Response("Forbidden — admin only", { status: 403 });
+    if (!canAccess(user.role, url.pathname)) {
+      return new Response("Forbidden — insufficient role", { status: 403 });
     }
   }
 

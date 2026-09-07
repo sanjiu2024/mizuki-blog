@@ -1,11 +1,11 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
-import Banner from "../components/Banner.astro";
-import Card from "../components/Card.astro";
-import { getLangFromUrl, createTranslator } from "../i18n";
-import { seedData } from "../db/seed";
-import { db } from "../db/client";
-import { posts as postsTable, postTags, tags as tagsTable } from "../db/schema";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import Banner from "../../components/Banner.astro";
+import Card from "../../components/Card.astro";
+import { getLangFromUrl, createTranslator } from "../../i18n";
+import { seedData } from "../../db/seed";
+import { db } from "../../db/client";
+import { posts as postsTable, postTags, tags as tagsTable } from "../../db/schema";
 import { eq, sql } from "drizzle-orm";
 
 // Pagination
@@ -124,7 +124,7 @@ const _ = createTranslator(lang);
       {totalPages > 1 && (
         <nav class="mt-8 flex items-center justify-between gap-2" aria-label={_("pagination.page")}>
           <a
-            href={hasPrev ? `/?page=${page - 1}#post-list` : undefined}
+            href={hasPrev ? `/en/?page=${page - 1}#post-list` : undefined}
             aria-disabled={!hasPrev}
             class:list={["btn-regular px-4 py-2 text-sm font-medium", !hasPrev && "pointer-events-none opacity-40"]}
           >
@@ -133,7 +133,7 @@ const _ = createTranslator(lang);
           <div class="flex items-center gap-1.5">
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
               <a
-                href={`/?page=${n}#post-list`}
+                href={`/en/?page=${n}#post-list`}
                 aria-current={n === page ? "page" : undefined}
                 class:list={["inline-flex h-8 min-w-8 items-center justify-center rounded-full text-sm font-medium transition", n === page ? "text-white shadow" : "btn-plain"]}
                 style={n === page ? "background: var(--primary);" : undefined}
@@ -143,7 +143,7 @@ const _ = createTranslator(lang);
             ))}
           </div>
           <a
-            href={hasNext ? `/?page=${page + 1}#post-list` : undefined}
+            href={hasNext ? `/en/?page=${page + 1}#post-list` : undefined}
             aria-disabled={!hasNext}
             class:list={["btn-regular px-4 py-2 text-sm font-medium", !hasNext && "pointer-events-none opacity-40"]}
           >
@@ -164,7 +164,7 @@ const _ = createTranslator(lang);
       <div class="card-base enable-card-border p-5" style="border-radius: var(--radius-large);">
         <h3 class="font-semibold text-sm mb-3" style="color: var(--btn-content);">{_("home.linksTitle")}</h3>
         <ul class="space-y-1.5 text-sm">
-          <li><a href={lang === "en" ? "/en/" : "/"} class="btn-plain px-2 py-1 inline-flex">{_("nav.home")}</a></li>
+          <li><a href="/en/" class="btn-plain px-2 py-1 inline-flex">{_("nav.home")}</a></li>
           <li><a href="/posts/hello-mizuki" class="btn-plain px-2 py-1 inline-flex">Hello Mizuki</a></li>
           <li><a href="/api/posts" class="btn-plain px-2 py-1 inline-flex">API /posts</a></li>
         </ul>

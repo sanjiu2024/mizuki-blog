@@ -1,0 +1,225 @@
+---
+interface Props {
+  lang?: "zh" | "en";
+  placeholder?: string;
+  searchLabel?: string;
+  closeLabel?: string;
+}
+
+const {
+  lang = "zh",
+  placeholder = lang === "en" ? "Search posts…" : "搜索文章…",
+  searchLabel = lang === "en" ? "Search" : "搜索",
+  closeLabel = lang === "en" ? "Close" : "关闭",
+} = Astro.props;
+
+const searchPageHref = lang === "en" ? "/en/search" : "/search";
+---
+
+<button
+  id="search-open-btn"
+  type="button"
+  aria-label={searchLabel}
+  aria-haspopup="dialog"
+  aria-expanded="false"
+  aria-controls="search-modal"
+  title={searchLabel}
+  class="btn-plain inline-flex h-8 w-8 items-center justify-center"
+>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="11" cy="11" r="7"></circle>
+    <line x1="21" y1="21" x2="16.5" y2="16.5"></line>
+  </svg>
+</button>
+
+<div
+  id="search-modal-root"
+  class="fixed inset-0 z-50 hidden items-start justify-center px-4 pt-[10vh]"
+  role="presentation"
+>
+  <div
+    id="search-modal-backdrop"
+    class="absolute inset-0"
+    style="background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(2px);"
+  ></div>
+  <div
+    id="search-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-label={searchLabel}
+    class="relative w-full max-w-lg overflow-hidden"
+    style="background: var(--card-bg); border: 1px solid var(--line-divider); border-radius: var(--radius-large); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);"
+  >
+    <div class="flex items-center gap-2 border-b px-4 py-3" style="border-color: var(--line-divider);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0 opacity-60">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="21" y1="21" x2="16.5" y2="16.5"></line>
+      </svg>
+      <input
+        id="search-modal-input"
+        type="search"
+        autocomplete="off"
+        maxlength="100"
+        placeholder={placeholder}
+        aria-label={placeholder}
+        class="w-full bg-transparent text-sm outline-none"
+        style="color: inherit;"
+      />
+      <button
+        id="search-modal-close"
+        type="button"
+        aria-label={closeLabel}
+        class="btn-plain inline-flex h-8 w-8 shrink-0 items-center justify-center text-lg leading-none"
+      >
+        <span aria-hidden="true">×</span>
+      </button>
+    </div>
+    <div id="search-modal-status" role="status" aria-live="polite" class="px-4 pt-3 text-xs opacity-60"></div>
+    <ul id="search-modal-results" class="max-h-[50vh] divide-y overflow-y-auto px-2 py-2" style="--tw-divide-opacity: 1;"></ul>
+    <div class="flex items-center justify-between border-t px-4 py-2.5 text-xs opacity-60" style="border-color: var(--line-divider);">
+      <span>ESC {closeLabel} · ↑↓ {lang === "en" ? "navigate" : "选择"} · Enter {lang === "en" ? "open" : "打开"}</span>
+      <a id="search-modal-full" href={searchPageHref} class="underline hover:opacity-100">{searchLabel} →</a>
+    </div>
+  </div>
+</div>
+
+<script is:inline data-search-modal>
+  (function () {
+    function init() {
+      var openBtn = document.getElementById('search-open-btn');
+      var root = document.getElementById('search-modal-root');
+      var backdrop = document.getElementById('search-modal-backdrop');
+      var input = document.getElementById('search-modal-input');
+      var closeBtn = document.getElementById('search-modal-close');
+      var resultsEl = document.getElementById('search-modal-results');
+      var statusEl = document.getElementById('search-modal-status');
+      var fullLink = document.getElementById('search-modal-full');
+      if (!openBtn || !root || !input || !resultsEl) return;
+      // Avoid double-binding across astro:page-load
+      if (root.dataset.bound === '1') return;
+      root.dataset.bound = '1';
+
+      var items = [];
+      var activeIndex = -1;
+      var timer = null;
+      var lastQuery = '';
+
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+      function sanitizeSnippet(snippet) {
+        if (!snippet) return '';
+        var escaped = escapeHtml(snippet);
+        return escaped
+          .replace(/&lt;mark&gt;/g, '<mark class="px-0.5 rounded" style="background: var(--btn-regular-bg); color: var(--primary);">')
+          .replace(/&lt;\/mark&gt;/g, '</mark>');
+      }
+      function renderTags(tags) {
+        if (!tags) return '';
+        var list = Array.isArray(tags) ? tags : String(tags).split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+        if (!list.length) return '';
+        return '<div class="mt-1.5 flex flex-wrap gap-1">' + list.slice(0, 5).map(function (t) {
+          var name = typeof t === 'string' ? t : (t.name || t.slug || '');
+          var slug = typeof t === 'string' ? t : (t.slug || t.name || '');
+          return '<a href="/tags/' + encodeURIComponent(slug) + '/" data-search-nav class="rounded-full px-2 py-0.5 text-xs" style="background: var(--btn-regular-bg); color: var(--btn-content);">#' + escapeHtml(name) + '</a>';
+        }).join('') + '</div>';
+      }
+      function setActive(i) {
+        activeIndex = i;
+        var links = resultsEl.querySelectorAll('[data-result-link]');
+        for (var k = 0; k < links.length; k++) {
+          if (k === i) links[k].setAttribute('data-active', '1');
+          else links[k].removeAttribute('data-active');
+          links[k].style.background = k === i ? 'var(--btn-regular-bg)' : 'transparent';
+        }
+      }
+      function render(results, q) {
+        items = results || [];
+        activeIndex = items.length ? 0 : -1;
+        if (!q) {
+          if (statusEl) statusEl.textContent = '';
+          resultsEl.innerHTML = '';
+          return;
+        }
+        if (fullLink) fullLink.href = '/search?q=' + encodeURIComponent(q);
+        if (!items.length) {
+          if (statusEl) statusEl.textContent = '';
+          resultsEl.innerHTML = '<li class="px-3 py-6 text-center text-sm opacity-60">' + escapeHtml(q) + ' — 0</li>';
+          return;
+        }
+        if (statusEl) statusEl.textContent = items.length + ' × ' + q;
+        resultsEl.innerHTML = items.map(function (r) {
+          var title = escapeHtml(r.title || '');
+          var excerpt = r.snippet ? sanitizeSnippet(r.snippet) : escapeHtml(r.excerpt || '');
+          var slug = encodeURIComponent(r.slug || '');
+          return '<li>' +
+            '<a data-result-link data-search-nav href="/posts/' + slug + '/" class="block rounded-lg px-3 py-2.5 transition-colors" style="border-radius: 0.5rem;">' +
+            '<span class="block text-sm font-semibold leading-snug">' + title + '</span>' +
+            (excerpt ? '<span class="mt-0.5 block text-xs leading-relaxed opacity-70" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">' + excerpt + '</span>' : '') +
+            renderTags(r.tags) +
+            '</a></li>';
+        }).join('');
+        setActive(activeIndex);
+      }
+
+      function doSearch(q) {
+        lastQuery = q;
+        if (!q) { render([], ''); return; }
+        if (statusEl) statusEl.textContent = '…';
+        fetch('/api/search?q=' + encodeURIComponent(q) + '&limit=8')
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (input.value.trim().slice(0, 100) !== lastQuery) return;
+            var list = data && data.results ? data.results : [];
+            render(list, lastQuery);
+          })
+          .catch(function () { render([], lastQuery); });
+      }
+
+      function open() {
+        root.classList.remove('hidden');
+        root.classList.add('flex');
+        openBtn.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+        setTimeout(function () { input.focus(); }, 30);
+      }
+      function close() {
+        root.classList.add('hidden');
+        root.classList.remove('flex');
+        openBtn.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+        openBtn.focus();
+      }
+      function isOpen() { return !root.classList.contains('hidden'); }
+
+      openBtn.addEventListener('click', function () { isOpen() ? close() : open(); });
+      if (closeBtn) closeBtn.addEventListener('click', close);
+      if (backdrop) backdrop.addEventListener('click', close);
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && isOpen()) { e.preventDefault(); close(); return; }
+        // Ctrl/Cmd+K quick open
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); isOpen() ? close() : open(); return; }
+        if (!isOpen()) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) setActive((activeIndex + 1) % items.length); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) setActive((activeIndex - 1 + items.length) % items.length); }
+        else if (e.key === 'Enter' && activeIndex >= 0) {
+          var links = resultsEl.querySelectorAll('[data-result-link]');
+          var a = links[activeIndex];
+          if (a) { window.location.href = a.getAttribute('href'); }
+        }
+      });
+
+      input.addEventListener('input', function () {
+        clearTimeout(timer);
+        var q = input.value.trim().slice(0, 100);
+        timer = setTimeout(function () { doSearch(q); }, 300);
+      });
+    }
+    init();
+    document.addEventListener('astro:page-load', init);
+  })();
+</script>

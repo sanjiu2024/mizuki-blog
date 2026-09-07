@@ -1,0 +1,33 @@
+---
+import type { Lang } from "../i18n";
+import { switchLangPath } from "../i18n";
+
+interface Props {
+  lang: Lang;
+  currentPath?: string;
+}
+
+const { lang, currentPath = "/" } = Astro.props;
+const target: Lang = lang === "zh" ? "en" : "zh";
+const targetHref = switchLangPath(currentPath, target);
+---
+
+<div class="flex items-center rounded-full border text-xs font-medium overflow-hidden" style="border-color: var(--line-divider);">
+  <a
+    href={switchLangPath(currentPath, "zh")}
+    aria-current={lang === "zh" ? "true" : undefined}
+    class="px-2.5 py-1.5 transition"
+    style={lang === "zh" ? "background: var(--primary); color: #fff;" : "color: var(--btn-content);"}
+  >
+    中文
+  </a>
+  <a
+    href={targetHref}
+    aria-current={lang === "en" ? "true" : undefined}
+    class="px-2.5 py-1.5 transition"
+    style={lang === "en" ? "background: var(--primary); color: #fff;" : "color: var(--btn-content);"}
+    title={lang === "zh" ? "Switch to English" : "切换到中文"}
+  >
+    EN
+  </a>
+</div>

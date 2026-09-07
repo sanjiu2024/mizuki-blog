@@ -8,6 +8,21 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
+// ── RBAC roles ──
+// user: 普通用户（fallback）· author: 作者 · inspector: 督查
+// admin: 管理员（向后兼容）· super_admin: 超级管理员（全通 + 可分配角色）
+export const USER_ROLES = [
+  "user",
+  "author",
+  "inspector",
+  "admin",
+  "super_admin",
+] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const isUserRole = (v: unknown): v is UserRole =>
+  typeof v === "string" && (USER_ROLES as readonly string[]).includes(v);
+
 // ── users ── (兼容 T04，better-auth 映射到同一表)
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),

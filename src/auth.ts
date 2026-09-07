@@ -31,12 +31,25 @@ export const auth = betterAuth({
             }),
           },
         },
-        account: {
-          accountLinking: { enabled: true, trustedProviders: ["github"] },
-        },
       }
     : {}),
-  user: { additionalFields: { image: { type: "string", required: false } } },
+  user: {
+    additionalFields: {
+      image: { type: "string", required: false },
+      role: {
+        type: "string",
+        required: false,
+        defaultValue: "user",
+        input: false,
+      },
+    },
+  },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["github"],
+    },
+  },
 });
 
 export const createAuth = () => auth;

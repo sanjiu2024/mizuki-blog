@@ -1,0 +1,98 @@
+---
+export const prerender = false;
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { db } from "../../db/client";
+import { ASSIGNABLE_ROLES, ROLE_LABELS, type UserRole } from "../../lib/rbac";
+
+const me = Astro.locals.user;
+if (!me || me.role !== "super_admin") {
+  return new Response("Forbidden — super_admin only", { status: 403 });
+}
+
+type Row = { id: string; email: string; name: string | null; role: string; created_at: number | null };
+let users: Row[] = [];
+try {
+  const rs = await db.$client.execute({
+    sql: "SELECT id, email, name, role, created_at FROM users ORDER BY created_at DESC",
+    args: [],
+  });
+  users = rs.rows as unknown as Row[];
+} catch {
+  users = [];
+}
+const roles = ASSIGNABLE_ROLES;
+const labels = ROLE_LABELS;
+---
+
+<BaseLayout title="用户与角色 — 超级管理">
+  <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold">用户与角色</h1>
+        <p class="text-sm opacity-60 mt-1">仅超级管理员可见 · 分配作者 / 督查 / 管理员 / 超级管理员</p>
+      </div>
+      <a href="/super" class="btn-plain px-4 py-2 text-sm">← 超级后台</a>
+    </div>
+
+    <div class="card-base enable-card-border overflow-hidden" style="border-radius: var(--radius-large);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-xs opacity-60 border-b" style="border-color: var(--line-divider);">
+            <tr>
+              <th class="text-left px-4 py-3 font-medium">用户</th>
+              <th class="text-left px-4 py-3 font-medium hidden sm:table-cell">Email</th>
+              <th class="text-left px-4 py-3 font-medium">角色</th>
+              <th class="text-right px-4 py-3 font-medium">分配角色</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.length === 0 ? (
+              <tr><td colspan="4" class="text-center py-12 opacity-50">暂无用户</td></tr>
+            ) : users.map((u) => (
+              <tr class="border-b last:border-0" style="border-color: var(--line-divider);">
+                <td class="px-4 py-3 font-medium max-w-[10rem] truncate">{u.name || u.id}{u.id === me.id ? "（我）" : ""}</td>
+                <td class="px-4 py-3 opacity-60 hidden sm:table-cell max-w-[14rem] truncate">{u.email}</td>
+                <td class="px-4 py-3">
+                  <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{labels[u.role as keyof typeof labels] ?? u.role}</span>
+                </td>
+                <td class="px-4 py-3 text-right whitespace-nowrap">
+                  <select data-role-for={u.id} class="role-select rounded-lg border px-2 py-1 text-xs" style="background: var(--card-bg); border-color: var(--line-divider);">
+                    {roles.map((r: UserRole) => (
+                      <option value={r} selected={u.role === r}>{labels[r]}</option>
+                    ))}
+                  </select>
+                  <button data-save-for={u.id} class="save-role-btn btn-plain px-3 py-1 text-xs font-medium ml-1">保存</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p id="users-msg" class="mt-4 text-sm hidden"></p>
+  </div>
+  <script is:inline>
+    document.querySelectorAll('.save-role-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-save-for');
+        const sel = document.querySelector(`select[data-role-for="${id}"]`);
+        const msg = document.getElementById('users-msg');
+        if (!id || !sel) return;
+        try {
+          const res = await fetch(`/api/admin/users/${encodeURIComponent(id)}/role`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ role: sel.value }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || '更新失败');
+          if (msg) { msg.textContent = `已更新 ${id} 为 ${data.role}`; msg.className = 'mt-4 text-sm text-green-600'; msg.classList.remove('hidden'); }
+          setTimeout(() => location.reload(), 600);
+        } catch (e) {
+          if (msg) { msg.textContent = e.message || String(e); msg.className = 'mt-4 text-sm text-red-500'; msg.classList.remove('hidden'); }
+        }
+      });
+    });
+  </script>
+</BaseLayout>

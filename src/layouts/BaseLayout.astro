@@ -1,7 +1,10 @@
 ---
 import ConfigCarrier from "../components/ConfigCarrier.astro";
 import ThemeToggle from "../components/ThemeToggle.astro";
+import LanguageSwitcher from "../components/LanguageSwitcher.astro";
+import SearchModal from "../components/SearchModal.astro";
 import { ClientRouter } from "astro:transitions";
+import { getLangFromUrl, createTranslator, htmlLang, t as translate } from "../i18n";
 import "../styles/tokens.css";
 import "../styles/banner.css";
 import "../styles/transition.css";
@@ -10,12 +13,17 @@ import "../styles/layout.css";
 interface Props {
   title?: string;
   description?: string;
+  lang?: "zh" | "en";
 }
-const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — deep sea of thoughts on Cloudflare Workers." } = Astro.props;
+const detectedLang = getLangFromUrl(Astro.url);
+const lang = Astro.props.lang ?? detectedLang;
+const _ = createTranslator(lang);
+const { title = translate(lang, "site.title"), description = translate(lang, "site.description") } = Astro.props;
+const currentPath = Astro.url.pathname + Astro.url.search;
 ---
 
 <!doctype html>
-<html lang="zh-CN">
+<html lang={htmlLang(lang)}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -41,7 +49,7 @@ const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — 
     </script>
     <!-- Swup placeholder: future page transition via swup / view transitions -->
   </head>
-  <body class="min-h-screen antialiased overflow-x-hidden selection:bg-[var(--selection-bg)]">
+  <body class="min-h-screen antialiased overflow-x-hidden selection:bg-[var(--selection-bg)]" data-lang={lang}>
     <ConfigCarrier />
 
     <!-- Header -->
@@ -55,16 +63,19 @@ const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — 
           Mizuki
         </a>
         <div class="flex items-center gap-1 sm:gap-2">
-          <a href="/" class="btn-plain px-3 py-1.5 text-sm font-medium">Home</a>
-          <a href="/tags" class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">Tags</a>
-          <a href="/rss.xml" class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">RSS</a>
+          <a href={lang === "en" ? "/en/" : "/"} class="btn-plain px-3 py-1.5 text-sm font-medium">{_("nav.home")}</a>
+          <a href={lang === "en" ? "/en/tags" : "/tags"} class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">{_("nav.tags")}</a>
+          <a href="/rss.xml" class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">{_("nav.rss")}</a>
+          <LanguageSwitcher lang={lang} currentPath={currentPath} />
+          <SearchModal lang={lang} placeholder={_("search.placeholder")} searchLabel={_("nav.search")} closeLabel={_("common.close")} />
           <ThemeToggle />
           <div id="auth-area" class="flex items-center gap-2 ml-1">
-            <a id="auth-login-link" href="/login" class="btn-regular px-3 py-1.5 text-sm font-medium hidden">Login</a>
+            <a id="auth-login-link" href={lang === "en" ? "/en/login" : "/login"} class="btn-regular px-3 py-1.5 text-sm font-medium hidden">{_("nav.login")}</a>
             <div id="auth-user" class="hidden items-center gap-2">
               <img id="auth-avatar" alt="avatar" class="h-7 w-7 rounded-full object-cover hidden" />
               <span id="auth-name" class="text-sm font-medium max-w-[8rem] truncate hidden sm:inline"></span>
-              <button id="auth-logout" class="btn-plain px-3 py-1.5 text-sm">退出</button>
+              <a id="auth-backend" href="/admin" class="btn-plain px-3 py-1.5 text-sm hidden">后台</a>
+              <button id="auth-logout" class="btn-plain px-3 py-1.5 text-sm">{_("nav.logout")}</button>
             </div>
           </div>
         </div>
@@ -77,8 +88,8 @@ const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — 
     </main>
 
     <footer class="mx-auto max-w-[var(--layout-page-width)] px-4 sm:px-6 lg:px-8 py-8 text-center text-sm" style="color: oklch(0.55 0.02 var(--hue)); border-top: 1px solid var(--line-divider);">
-      <p>© {new Date().getFullYear()} Mizuki — Built with Astro 7 & Cloudflare Workers.</p>
-      <p class="mt-1 opacity-60">わたしの部屋 · Deep sea of thoughts</p>
+      <p>{_("footer.copyright", { year: new Date().getFullYear() })}</p>
+      <p class="mt-1 opacity-60">{_("footer.tagline")}</p>
     </footer>
 
     <script is:inline>
@@ -105,6 +116,13 @@ const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — 
             if (userBox) { userBox.classList.remove('hidden'); userBox.classList.add('flex'); }
             if (nameEl) nameEl.textContent = user.name || user.email || 'User';
             if (avatar && user.image) { avatar.src = user.image; avatar.classList.remove('hidden'); }
+            const backend = document.getElementById('auth-backend');
+            const homeByRole = { super_admin: '/super', admin: '/admin', author: '/author/dashboard', inspector: '/inspector/dashboard' };
+            const target = homeByRole[user.role] || null;
+            if (backend) {
+              if (target) { backend.href = target; backend.classList.remove('hidden'); }
+              else backend.classList.add('hidden');
+            }
           } else {
             if (loginLink) loginLink.classList.remove('hidden');
             if (userBox) { userBox.classList.add('hidden'); userBox.classList.remove('flex'); }
@@ -115,9 +133,17 @@ const { title = "Mizuki — わたしの部屋", description = "Mizuki Blog — 
       }
       refreshAuth();
       document.addEventListener('astro:page-load', refreshAuth);
-      document.getElementById('auth-logout')?.addEventListener('click', async () => {
-        try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' }); } catch {}
-        location.href = '/';
+      // Logout must survive ClientRouter navigations (header DOM is swapped),
+      // so use document-level delegation instead of a one-time binding.
+      async function signOut() {
+        try {
+          await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' });
+        } catch {}
+        location.href = document.body.dataset.lang === 'en' ? '/en/' : '/';
+      }
+      document.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('#auth-logout') : null;
+        if (btn) { e.preventDefault(); signOut(); }
       });
     </script>
   </body>
