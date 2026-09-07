@@ -2,34 +2,33 @@
 export const prerender = false;
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { seedData } from "../db/seed";
+import { db } from "../db/client";
 
 let groups: Array<{ ym: string; cnt: number }> = [];
 let posts: Array<{ id: string; slug: string; title: string; excerpt: string | null; published_at: number; ym: string }> = [];
 
 try {
-  const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
-  if (!d1) throw new Error("D1 unavailable");
-  const ymStmt = d1.prepare(`
-    SELECT strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym, count(*) as cnt
+  const ymRs = await db.$client.execute({
+    sql: `SELECT strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym, count(*) as cnt
     FROM posts
     WHERE published_at IS NOT NULL AND status = 'published'
     GROUP BY ym
     ORDER BY ym DESC
-    LIMIT 20
-  `);
-  const ymRes = await ymStmt.all();
-  groups = (ymRes.results ?? ymRes) as typeof groups;
+    LIMIT 20`,
+    args: [],
+  });
+  groups = (ymRs.rows ?? []) as unknown as typeof groups;
 
-  const postsStmt = d1.prepare(`
-    SELECT id, slug, title, excerpt, published_at,
+  const postsRs = await db.$client.execute({
+    sql: `SELECT id, slug, title, excerpt, published_at,
            strftime('%Y-%m', datetime(published_at/1000, 'unixepoch')) as ym
     FROM posts
     WHERE published_at IS NOT NULL AND status = 'published'
     ORDER BY published_at DESC
-    LIMIT 20
-  `);
-  const postsRes = await postsStmt.all();
-  posts = (postsRes.results ?? postsRes) as typeof posts;
+    LIMIT 20`,
+    args: [],
+  });
+  posts = (postsRs.rows ?? []) as unknown as typeof posts;
 } catch {
   // fallback to seedData
   const seedPosts = seedData.posts.filter((p) => p.status === "published").slice(0, 20);

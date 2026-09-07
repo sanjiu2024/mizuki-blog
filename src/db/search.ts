@@ -47,33 +47,50 @@ function escapeLike(q: string): string {
 
 export const searchPosts = async (db: any, q: string, limit = 20) => {
   if (!q?.trim()) return [];
-  const client: D1Database = db.prepare ? db : (db.$client ?? db.client ?? db);
+  // Resolve a runnable client: drizzle libsql ($client.execute),
+  // raw libsql client (.execute), or legacy D1 (.prepare).
+  const raw: any = db?.$client?.execute
+    ? db.$client
+    : db?.client?.execute
+      ? db.client
+      : (db ?? null);
+  const runAll = async (sqlText: string, args: unknown[]): Promise<any[]> => {
+    if (raw?.execute) {
+      const rs = await raw.execute({ sql: sqlText, args: args as any[] });
+      const rows = (rs?.rows ?? rs) as any[];
+      return Array.isArray(rows) ? rows : [];
+    }
+    if (db?.prepare) {
+      const res = await db
+        .prepare(sqlText)
+        .bind(...args)
+        .all();
+      return (res.results ?? res) as any[];
+    }
+    return [];
+  };
   const escaped = escapeFts5Query(q);
   if (escaped) {
     try {
-      const stmt = client.prepare(
+      const rows = await runAll(
         `SELECT p.*, bm25(posts_fts) as rank, snippet(posts_fts, '<mark>', '</mark>', '...', -1, 64) as snippet
          FROM posts_fts JOIN posts p ON p.rowid = posts_fts.rowid
          WHERE posts_fts MATCH ? ORDER BY rank LIMIT ?`,
+        [escaped, limit],
       );
-      const res = await stmt.bind(escaped, limit).all();
-      const rows = (res.results ?? res) as any[];
       if (rows && rows.length > 0) return rows;
-      // If FTS returns 0 but query non-empty, fall through to LIKE to broaden
     } catch {
       // FTS syntax error -> fallback to LIKE
     }
   }
-  // LIKE fallback (escape wildcards)
   try {
     const like = `%${escapeLike(q.trim())}%`;
-    const stmt2 = client.prepare(
+    return await runAll(
       `SELECT p.*, 0 as rank, NULL as snippet FROM posts p
        WHERE p.status='published' AND (p.title LIKE ? ESCAPE '\\' OR p.excerpt LIKE ? ESCAPE '\\' OR p.content LIKE ? ESCAPE '\\')
        LIMIT ?`,
+      [like, like, like, limit],
     );
-    const res2 = await stmt2.bind(like, like, like, limit).all();
-    return (res2.results ?? res2) as any[];
   } catch {
     return [];
   }

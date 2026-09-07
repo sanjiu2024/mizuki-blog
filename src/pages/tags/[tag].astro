@@ -2,6 +2,7 @@
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { seedData } from "../../db/seed";
+import { db } from "../../db/client";
 
 const { tag } = Astro.params;
 if (!tag) return Astro.redirect("/tags");
@@ -17,26 +18,29 @@ let posts: Array<{ id: string; slug: string; title: string; excerpt: string | nu
 let total = 0;
 
 try {
-  const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
-  if (!d1) throw new Error("D1 unavailable");
-  const tagStmt = d1.prepare("SELECT id, name, slug FROM tags WHERE slug = ? LIMIT 1");
-  const tagRes = await tagStmt.bind(tag).all();
-  const rows = (tagRes.results ?? tagRes) as Array<{ id: string; name: string; slug: string }>;
+  const tagRs = await db.$client.execute({
+    sql: "SELECT id, name, slug FROM tags WHERE slug = ? LIMIT 1",
+    args: [tag],
+  });
+  const rows = (tagRs.rows ?? []) as unknown as Array<{ id: string; name: string; slug: string }>;
   tagRow = rows[0];
 
   if (tagRow) {
-    const countRes = await d1.prepare("SELECT COUNT(*) as c FROM post_tags WHERE tag_id=?").bind(tagRow.id).first<{ c: number }>();
-    total = countRes?.c ?? 0;
-    const postStmt = d1.prepare(`
-      SELECT p.id, p.slug, p.title, p.excerpt, p.published_at
+    const countRs = await db.$client.execute({
+      sql: "SELECT COUNT(*) as c FROM post_tags WHERE tag_id=?",
+      args: [tagRow.id],
+    });
+    total = Number((countRs.rows?.[0] as any)?.c ?? 0);
+    const postRs = await db.$client.execute({
+      sql: `SELECT p.id, p.slug, p.title, p.excerpt, p.published_at
       FROM posts p
       JOIN post_tags pt ON pt.post_id = p.id
       WHERE pt.tag_id = ?
       ORDER BY p.published_at DESC
-      LIMIT ? OFFSET ?
-    `);
-    const postRes = await postStmt.bind(tagRow.id, limit, offset).all();
-    posts = (postRes.results ?? postRes) as typeof posts;
+      LIMIT ? OFFSET ?`,
+      args: [tagRow.id, limit, offset],
+    });
+    posts = (postRs.rows ?? []) as unknown as typeof posts;
   }
 } catch {
   // fallback to seedData

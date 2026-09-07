@@ -1,6 +1,7 @@
 ---
 export const prerender = false;
 import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { db } from "../../../db/client";
 
 const { id } = Astro.params;
 
@@ -8,15 +9,19 @@ let post: any = null;
 let tagsStr = "";
 
 try {
-  const runtime: any = (Astro.locals as any)?.runtime;
-  const env = runtime?.env ?? {};
-  const db: D1Database | undefined = env.DB;
-  if (db && id) {
-    const p = await db.prepare("SELECT id, slug, title, excerpt, content, status FROM posts WHERE id=?").bind(id).first();
+  if (id) {
+    const rs = await db.$client.execute({
+      sql: "SELECT id, slug, title, excerpt, content, status FROM posts WHERE id=?",
+      args: [id],
+    });
+    const p = (rs.rows?.[0] ?? null) as any;
     if (p) {
       post = p;
-      const tagRes = await db.prepare("SELECT t.name FROM tags t JOIN post_tags pt ON pt.tag_id=t.id WHERE pt.post_id=?").bind(id).all();
-      const rows: any[] = ((tagRes.results ?? tagRes) as any[]) ?? [];
+      const tagRs = await db.$client.execute({
+        sql: "SELECT t.name FROM tags t JOIN post_tags pt ON pt.tag_id=t.id WHERE pt.post_id=?",
+        args: [id],
+      });
+      const rows: any[] = tagRs.rows as unknown as any[];
       tagsStr = rows.map((r:any)=>r.name).join(", ");
     }
   }

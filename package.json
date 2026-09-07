@@ -11,21 +11,22 @@
     "preview": "astro preview",
     "astro": "astro",
     "check": "astro check",
+    "start": "node ./dist/server/entry.mjs",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "deploy": "astro build && wrangler deploy",
+    "db:push": "drizzle-kit push",
+    "db:migrate": "drizzle-kit migrate",
     "test": "vitest run"
   },
   "dependencies": {
-    "astro": "^7.2.9",
+    "@libsql/client": "^0.18.0",
+    "astro": "^7.3.1",
     "better-auth": "^1.7.2",
     "drizzle-orm": "^0.45.2",
     "nanoid": "^6.0.1"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@astrojs/cloudflare": "^14.2.5",
+    "@astrojs/node": "7.0.4",
     "@astrojs/rss": "^4.0.19",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@tailwindcss/typography": "^0.5.20",
@@ -33,7 +34,6 @@
     "drizzle-kit": "^0.31.10",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.11",
-    "wrangler": "^4.127.1"
+    "vitest": "^4.1.11"
   }
 }

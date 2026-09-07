@@ -2,21 +2,20 @@
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { seedData } from "../../db/seed";
+import { db } from "../../db/client";
 
 let tags: Array<{ id: string; name: string; slug: string; cnt: number }> = [];
 try {
-  const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
-  if (!d1) throw new Error("D1 unavailable");
-  const stmt = d1.prepare(`
-    SELECT t.id, t.name, t.slug, COUNT(pt.post_id) as cnt
+  const rs = await db.$client.execute({
+    sql: `SELECT t.id, t.name, t.slug, COUNT(pt.post_id) as cnt
     FROM tags t
     LEFT JOIN post_tags pt ON pt.tag_id = t.id
     GROUP BY t.id
     ORDER BY cnt DESC, t.name ASC
-    LIMIT 20
-  `);
-  const res = await stmt.all();
-  tags = (res.results ?? res) as typeof tags;
+    LIMIT 20`,
+    args: [],
+  });
+  tags = (rs.rows ?? []) as unknown as typeof tags;
 } catch {
   // fallback to seedData
   const countMap = new Map<string, number>();

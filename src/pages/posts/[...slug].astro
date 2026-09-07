@@ -1,6 +1,9 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { seedData } from "../../db/seed";
+import { db } from "../../db/client";
+import { postTags, tags as tagsTable } from "../../db/schema";
+import { eq } from "drizzle-orm";
 
 export const prerender = false;
 
@@ -12,17 +15,26 @@ type PostRow = { id: string; slug: string; title: string; excerpt: string | null
 let post: PostRow | null = null;
 
 try {
-  const runtime: any = (Astro.locals as any)?.runtime;
-  const env = runtime?.env ?? (Astro.locals as any)?.env ?? {};
-  const db: D1Database | undefined = env.DB;
-  if (db && slugStr) {
-    const row = await db.prepare(
-      "SELECT id, slug, title, excerpt, content, published_at as publishedAt, created_at as createdAt FROM posts WHERE slug = ? AND status='published' LIMIT 1"
-    ).bind(slugStr).first<PostRow>();
+  if (slugStr) {
+    const row = await db.query.posts.findFirst({
+      where: (p, { eq, and }) => and(eq(p.slug, slugStr), eq(p.status, "published")),
+    });
     if (row) {
-      const tagRes = await db.prepare("SELECT t.slug FROM tags t JOIN post_tags pt ON pt.tag_id=t.id WHERE pt.post_id=?").bind(row.id).all<{ slug: string }>();
-      const trows = (tagRes.results ?? tagRes) as any[];
-      post = { ...row, tags: trows.map((x: any) => x.slug) };
+      const tagRows = await db
+        .select({ slug: tagsTable.slug })
+        .from(tagsTable)
+        .innerJoin(postTags, eq(postTags.tagId, tagsTable.id))
+        .where(eq(postTags.postId, row.id));
+      post = {
+        id: row.id,
+        slug: row.slug,
+        title: row.title,
+        excerpt: row.excerpt,
+        content: row.content,
+        publishedAt: row.publishedAt,
+        createdAt: row.createdAt,
+        tags: tagRows.map((x) => x.slug),
+      };
     }
   } else {
     throw new Error("no db");

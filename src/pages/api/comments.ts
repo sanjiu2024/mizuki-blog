@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
-import { createDb } from "../../db/client";
+import { db } from "../../db/client";
+import { auth } from "../../auth";
 import { comments } from "../../db/schema";
 import { eq, desc } from "drizzle-orm";
 
@@ -76,29 +77,21 @@ export const GET: APIRoute = async (ctx) => {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
-  const env: any = (ctx.locals as any)?.runtime?.env ?? {};
-  if (!env.DB)
-    return new Response(JSON.stringify({ error: "DB not configured" }), {
-      status: 500,
-    });
 
   // Use raw SQL to JOIN like counts for efficiency
   try {
-    const d1: D1Database = env.DB;
-    const res = await d1
-      .prepare(
-        `SELECT c.id, c.post_id, c.author_id, c.parent_id, c.content, c.status, c.created_at,
+    const rs = await db.$client.execute({
+      sql: `SELECT c.id, c.post_id, c.author_id, c.parent_id, c.content, c.status, c.created_at,
                 COUNT(r.id) as likeCount
          FROM comments c
          LEFT JOIN comment_reactions r ON r.comment_id = c.id
          WHERE c.post_id = ? AND c.status='approved'
          GROUP BY c.id
          ORDER BY c.created_at ASC`,
-      )
-      .bind(postId)
-      .all<CommentRow>();
-    const rows = (res.results ?? res) as unknown as CommentRow[];
-    // Normalize likeCount (D1 returns integer)
+      args: [postId],
+    });
+    const rows = (rs.rows ?? []) as unknown as CommentRow[];
+    // Normalize likeCount (sqlite returns integer)
     const normalized = rows.map((r: any) => ({
       ...r,
       likeCount: Number(r.likeCount ?? 0),
@@ -109,7 +102,6 @@ export const GET: APIRoute = async (ctx) => {
     });
   } catch (e) {
     // fallback drizzle
-    const db = createDb(env.DB);
     const rows = await db
       .select()
       .from(comments)
@@ -133,12 +125,6 @@ export const GET: APIRoute = async (ctx) => {
 };
 
 export const POST: APIRoute = async (ctx) => {
-  const env: any = (ctx.locals as any)?.runtime?.env ?? {};
-  if (!env.DB)
-    return new Response(JSON.stringify({ error: "DB not configured" }), {
-      status: 500,
-    });
-
   // Like action via same endpoint: { commentId, action: 'like' }
   const url = new URL(ctx.request.url);
   const maybeLike =
@@ -149,7 +135,7 @@ export const POST: APIRoute = async (ctx) => {
 
   // If it's a like request via this endpoint (POST /api/comments/like style), handle here
   if (isLikeRequest && body?.commentId && !body?.postId) {
-    return handleLike(ctx, env, body.commentId);
+    return handleLike(ctx, body.commentId);
   }
 
   // Normal comment creation — rate limit
@@ -164,8 +150,6 @@ export const POST: APIRoute = async (ctx) => {
   // auth check via better-auth session
   let userId: string | null = null;
   try {
-    const { createAuth } = await import("../../auth");
-    const auth = createAuth(env);
     const session = await auth.api.getSession({ headers: ctx.request.headers });
     userId =
       (session as any)?.user?.id ?? (session as any)?.session?.userId ?? null;
@@ -188,26 +172,23 @@ export const POST: APIRoute = async (ctx) => {
       { status: 400 },
     );
 
-  const db = createDb(env.DB);
   const id = `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-  await db
-    .insert(comments)
-    .values({
-      id,
-      postId,
-      authorId: userId,
-      parentId: parentId ?? null,
-      content: content.trim(),
-      status: "approved",
-      createdAt: Date.now(),
-    });
+  await db.insert(comments).values({
+    id,
+    postId,
+    authorId: userId,
+    parentId: parentId ?? null,
+    content: content.trim(),
+    status: "approved",
+    createdAt: Date.now(),
+  });
   return new Response(JSON.stringify({ ok: true, id }), {
     status: 201,
     headers: { "Content-Type": "application/json" },
   });
 };
 
-async function handleLike(ctx: any, env: any, commentId: string) {
+async function handleLike(ctx: any, commentId: string) {
   if (!commentId)
     return new Response(JSON.stringify({ error: "commentId required" }), {
       status: 400,
@@ -220,8 +201,6 @@ async function handleLike(ctx: any, env: any, commentId: string) {
   }
   let userId: string | null = null;
   try {
-    const { createAuth } = await import("../../auth");
-    const auth = createAuth(env);
     const session = await auth.api.getSession({ headers: ctx.request.headers });
     userId =
       (session as any)?.user?.id ?? (session as any)?.session?.userId ?? null;
@@ -231,15 +210,12 @@ async function handleLike(ctx: any, env: any, commentId: string) {
       JSON.stringify({ error: "Unauthorized - please login" }),
       { status: 401 },
     );
-  const d1: D1Database = env.DB;
   const id = `r_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
   try {
-    await d1
-      .prepare(
-        "INSERT INTO comment_reactions (id, comment_id, user_id, type) VALUES (?, ?, ?, 'like')",
-      )
-      .bind(id, commentId, userId)
-      .run();
+    await db.$client.execute({
+      sql: "INSERT INTO comment_reactions (id, comment_id, user_id, type) VALUES (?, ?, ?, 'like')",
+      args: [id, commentId, userId],
+    });
   } catch (e: any) {
     const msg = String(e?.message ?? e);
     // Unique constraint -> already liked, toggle off (unlike)
@@ -248,20 +224,20 @@ async function handleLike(ctx: any, env: any, commentId: string) {
       msg.includes("unique") ||
       msg.includes("idx_reaction_unique")
     ) {
-      await d1
-        .prepare(
-          "DELETE FROM comment_reactions WHERE comment_id=? AND user_id=?",
-        )
-        .bind(commentId, userId)
-        .run();
-      const cnt = await d1
-        .prepare(
-          "SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?",
-        )
-        .bind(commentId)
-        .first<{ c: number }>();
+      await db.$client.execute({
+        sql: "DELETE FROM comment_reactions WHERE comment_id=? AND user_id=?",
+        args: [commentId, userId],
+      });
+      const cnt = await db.$client.execute({
+        sql: "SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?",
+        args: [commentId],
+      });
       return new Response(
-        JSON.stringify({ ok: true, liked: false, likeCount: cnt?.c ?? 0 }),
+        JSON.stringify({
+          ok: true,
+          liked: false,
+          likeCount: Number((cnt.rows?.[0] as any)?.c ?? 0),
+        }),
         { headers: { "Content-Type": "application/json" } },
       );
     }
@@ -269,12 +245,16 @@ async function handleLike(ctx: any, env: any, commentId: string) {
       status: 500,
     });
   }
-  const cnt = await d1
-    .prepare("SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?")
-    .bind(commentId)
-    .first<{ c: number }>();
+  const cnt = await db.$client.execute({
+    sql: "SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?",
+    args: [commentId],
+  });
   return new Response(
-    JSON.stringify({ ok: true, liked: true, likeCount: cnt?.c ?? 1 }),
+    JSON.stringify({
+      ok: true,
+      liked: true,
+      likeCount: Number((cnt.rows?.[0] as any)?.c ?? 1),
+    }),
     { headers: { "Content-Type": "application/json" } },
   );
 }

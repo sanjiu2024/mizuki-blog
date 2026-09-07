@@ -1,12 +1,11 @@
 export const prerender = false;
 import rss from "@astrojs/rss";
-import { createDb } from "../db/client";
+import { db } from "../db/client";
 import { seedData } from "../db/seed";
 
 export async function GET(context: any) {
   let posts: any[] = [];
   try {
-    const db = createDb(context.locals.runtime.env.DB);
     posts = await db.query.posts.findMany({
       where: (p: any, { eq }: any) => eq(p.status, "published"),
       orderBy: (p: any, { desc }: any) => desc(p.publishedAt),

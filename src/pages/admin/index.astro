@@ -1,18 +1,15 @@
 ---
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { db } from "../../db/client";
 
 let posts: any[] = [];
 try {
-  const runtime: any = (Astro.locals as any)?.runtime;
-  const env = runtime?.env ?? {};
-  const db: D1Database | undefined = env.DB;
-  if (db) {
-    const res = await db
-      .prepare("SELECT id, slug, title, excerpt, status, created_at as createdAt, published_at as publishedAt FROM posts ORDER BY created_at DESC")
-      .all();
-    posts = ((res.results ?? res) as any[]) ?? [];
-  }
+  const rs = await db.$client.execute({
+    sql: "SELECT id, slug, title, excerpt, status, created_at as createdAt, published_at as publishedAt FROM posts ORDER BY created_at DESC",
+    args: [],
+  });
+  posts = rs.rows as unknown as any[];
 } catch (e) {
   posts = [];
 }

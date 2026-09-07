@@ -2,6 +2,7 @@
 export const prerender = false;
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { searchPosts } from "../db/search";
+import { db } from "../db/client";
 import { seedData } from "../db/seed";
 
 const rawQ = Astro.url.searchParams.get("q")?.trim() ?? "";
@@ -21,9 +22,7 @@ function sanitizeSnippet(snippet: string | null): string {
 let results: any[] = [];
 if (q) {
   try {
-    const d1 = (Astro.locals as any).runtime.env.DB as D1Database;
-    if (!d1) throw new Error("D1 unavailable");
-    results = await searchPosts(d1, q, 20);
+    results = await searchPosts(db, q, 20);
   } catch {
     // fallback: simple LIKE over seedData (escaped)
     const lower = q.toLowerCase();

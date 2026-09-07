@@ -1,6 +1,6 @@
 export const prerender = false;
 
-import { createDb } from "../db/client";
+import { db } from "../db/client";
 import { seedData } from "../db/seed";
 
 export async function GET(context: any) {
@@ -11,7 +11,6 @@ export async function GET(context: any) {
   let urls: string[] = [];
 
   try {
-    const db = createDb(context.locals.runtime.env.DB);
     const posts: any[] = await db.query.posts.findMany({
       where: (p: any, { eq }: any) => eq(p.status, "published"),
       columns: { slug: true, publishedAt: true },

@@ -1,48 +1,42 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createDb } from "./db/client";
+import { db } from "./db/client";
 import * as schema from "./db/schema";
 
-export const createAuth = (env: any) => {
-  if (!env?.DB) {
-    throw new Error(
-      "D1 DB binding missing: env.DB is undefined - check wrangler.jsonc d1_databases and Dashboard Bindings",
-    );
-  }
-  return betterAuth({
-    database: drizzleAdapter(createDb(env.DB), { provider: "sqlite", schema }),
-    baseURL: env.BETTER_AUTH_URL ?? "http://localhost:4321",
-    trustedOrigins: [
-      env.BETTER_AUTH_URL,
-      "http://localhost:4321",
-      "http://127.0.0.1:4321",
-    ].filter(Boolean),
-    secret: env.BETTER_AUTH_SECRET ?? "dev-secret-please-change-32-chars-min",
-    emailAndPassword: { enabled: true },
-    ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
-      ? {
-          socialProviders: {
-            github: {
-              clientId: env.GITHUB_CLIENT_ID,
-              clientSecret: env.GITHUB_CLIENT_SECRET,
-              scope: ["user:email", "read:user"],
-              mapProfileToUser: (profile: any) => ({
-                name: profile.name ?? profile.login ?? profile.email,
-                email: profile.email,
-                image: profile.avatar_url ?? profile.picture ?? null,
-                emailVerified: true,
-              }),
-            },
+const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:4321";
+
+export const auth = betterAuth({
+  database: drizzleAdapter(db, { provider: "sqlite", schema }),
+  baseURL,
+  trustedOrigins: [
+    baseURL,
+    "http://localhost:4321",
+    "http://127.0.0.1:4321",
+  ].filter(Boolean),
+  secret:
+    process.env.BETTER_AUTH_SECRET ?? "dev-secret-please-change-32-chars-min",
+  emailAndPassword: { enabled: true },
+  ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+    ? {
+        socialProviders: {
+          github: {
+            clientId: process.env.GITHUB_CLIENT_ID,
+            clientSecret: process.env.GITHUB_CLIENT_SECRET,
+            scope: ["user:email", "read:user"],
+            mapProfileToUser: (profile: any) => ({
+              name: profile.name ?? profile.login ?? profile.email,
+              email: profile.email,
+              image: profile.avatar_url ?? profile.picture ?? null,
+              emailVerified: true,
+            }),
           },
-          account: {
-            accountLinking: { enabled: true, trustedProviders: ["github"] },
-          },
-        }
-      : {}),
-    user: {
-      additionalFields: {
-        image: { type: "string", required: false },
-      },
-    },
-  });
-};
+        },
+        account: {
+          accountLinking: { enabled: true, trustedProviders: ["github"] },
+        },
+      }
+    : {}),
+  user: { additionalFields: { image: { type: "string", required: false } } },
+});
+
+export const createAuth = () => auth;

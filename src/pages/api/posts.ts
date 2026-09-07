@@ -1,30 +1,39 @@
 import type { APIRoute } from "astro";
 import { seedData } from "../../db/seed";
-import { createAuth } from "../../auth";
+import { db } from "../../db/client";
+import { auth } from "../../auth";
 import { nanoid } from "nanoid";
 
 export const prerender = false;
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 
-function getEnv(locals: any) {
-  return locals?.runtime?.env ?? (locals as any)?.env ?? {};
+async function first(sqlText: string, args: unknown[]): Promise<any> {
+  const rs = await db.$client.execute({ sql: sqlText, args: args as any[] });
+  return (rs.rows?.[0] ?? null) as any;
 }
 
-async function getSessionUser(request: Request, env: any) {
+async function all(sqlText: string, args: unknown[]): Promise<any[]> {
+  const rs = await db.$client.execute({ sql: sqlText, args: args as any[] });
+  return rs.rows as unknown as any[];
+}
+
+async function run(sqlText: string, args: unknown[]): Promise<void> {
+  await db.$client.execute({ sql: sqlText, args: args as any[] });
+}
+
+async function getSessionUser(request: Request) {
   try {
-    if (!env.DB) return null;
-    const auth = createAuth(env);
     const data: any = await (auth as any).api.getSession({
       headers: request.headers,
     });
     const user = data?.user ?? null;
     if (!user) return null;
-    // supplement role from D1
+    // supplement role from db
     try {
-      const row = (await env.DB.prepare("SELECT role FROM users WHERE id=?")
-        .bind(user.id)
-        .first()) as { role: string } | null;
+      const row = (await first("SELECT role FROM users WHERE id=?", [
+        user.id,
+      ])) as { role: string } | null;
       if (row?.role) user.role = row.role;
       else if (!user.role) user.role = "user";
     } catch {
@@ -36,9 +45,8 @@ async function getSessionUser(request: Request, env: any) {
   }
 }
 
-async function requireAdmin(request: Request, locals: any) {
-  const env = getEnv(locals);
-  const user = await getSessionUser(request, env);
+async function requireAdmin(request: Request) {
+  const user = await getSessionUser(request);
   if (!user) {
     return {
       user: null,
@@ -57,7 +65,7 @@ async function requireAdmin(request: Request, locals: any) {
       }),
     };
   }
-  return { user, env, error: null as any };
+  return { user, error: null as any };
 }
 
 function validateBody(body: any) {
@@ -97,45 +105,45 @@ function slugifyTag(name: string) {
   );
 }
 
-async function syncPostTags(db: D1Database, postId: string, tags: string[]) {
+async function syncPostTags(postId: string, tags: string[]) {
   // delete old
-  await db.prepare("DELETE FROM post_tags WHERE post_id=?").bind(postId).run();
+  await run("DELETE FROM post_tags WHERE post_id=?", [postId]);
   for (const raw of tags) {
     const name = raw.trim();
     if (!name) continue;
     const slug = slugifyTag(name);
     // find existing tag by slug or name
-    let tagRow = await db
-      .prepare("SELECT id FROM tags WHERE slug=? OR name=?")
-      .bind(slug, name)
-      .first<{ id: string }>();
+    const tagRow = (await first("SELECT id FROM tags WHERE slug=? OR name=?", [
+      slug,
+      name,
+    ])) as { id: string } | null;
     let tagId = tagRow?.id;
     if (!tagId) {
       tagId = nanoid(10);
       try {
-        await db
-          .prepare("INSERT INTO tags (id, name, slug) VALUES (?,?,?)")
-          .bind(tagId, name, slug)
-          .run();
+        await run("INSERT INTO tags (id, name, slug) VALUES (?,?,?)", [
+          tagId,
+          name,
+          slug,
+        ]);
       } catch {
         // if slug conflict try fetch again
-        const again = await db
-          .prepare("SELECT id FROM tags WHERE slug=?")
-          .bind(slug)
-          .first<{ id: string }>();
+        const again = (await first("SELECT id FROM tags WHERE slug=?", [
+          slug,
+        ])) as { id: string } | null;
         if (again?.id) tagId = again.id;
         else continue;
       }
     }
-    await db
-      .prepare("INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?,?)")
-      .bind(postId, tagId)
-      .run();
+    await run(
+      "INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?,?)",
+      [postId, tagId],
+    );
   }
 }
 
 // ── GET (保留) ──
-export const GET: APIRoute = async ({ locals, url }) => {
+export const GET: APIRoute = async ({ url }) => {
   const limit = Math.min(
     parseInt(url.searchParams.get("limit") || "20", 10) || 20,
     50,
@@ -146,28 +154,20 @@ export const GET: APIRoute = async ({ locals, url }) => {
   let total = 0;
 
   try {
-    const env = getEnv(locals);
-    const db: D1Database | undefined = env.DB;
-    if (db) {
-      const cnt = await db
-        .prepare("SELECT COUNT(*) as cnt FROM posts WHERE status='published'")
-        .first<{ cnt: number }>();
-      total = cnt?.cnt ?? 0;
-      const res = await db
-        .prepare(
-          "SELECT id, slug, title, excerpt, content, status, published_at as publishedAt, created_at as createdAt FROM posts WHERE status='published' ORDER BY published_at DESC, created_at DESC LIMIT ? OFFSET ?",
-        )
-        .bind(limit, offset)
-        .all();
-      posts = ((res.results ?? res) as any[]) ?? [];
-      total = total || posts.length;
-    } else {
-      throw new Error("no DB");
-    }
+    const cnt = await first(
+      "SELECT COUNT(*) as cnt FROM posts WHERE status='published'",
+      [],
+    );
+    total = Number(cnt?.cnt ?? 0);
+    posts = await all(
+      "SELECT id, slug, title, excerpt, content, status, published_at as publishedAt, created_at as createdAt FROM posts WHERE status='published' ORDER BY published_at DESC, created_at DESC LIMIT ? OFFSET ?",
+      [limit, offset],
+    );
+    total = total || posts.length;
   } catch {
-    const all = seedData.posts;
-    total = all.length;
-    posts = all.slice(offset, offset + limit).map((p) => ({
+    const allPosts = seedData.posts;
+    total = allPosts.length;
+    posts = allPosts.slice(offset, offset + limit).map((p) => ({
       id: p.id,
       slug: p.slug,
       title: p.title,
@@ -191,16 +191,10 @@ export const GET: APIRoute = async ({ locals, url }) => {
 };
 
 // ── POST ──
-export const POST: APIRoute = async ({ request, locals }) => {
-  const auth = await requireAdmin(request, locals);
-  if (auth.error) return auth.error;
-  const { user, env } = auth;
-  const db: D1Database = env.DB;
-  if (!db)
-    return new Response(JSON.stringify({ error: "DB not configured" }), {
-      status: 500,
-      headers: { "content-type": "application/json" },
-    });
+export const POST: APIRoute = async ({ request }) => {
+  const gate = await requireAdmin(request);
+  if (gate.error) return gate.error;
+  const { user } = gate;
 
   let body: any;
   try {
@@ -225,11 +219,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const publishedAt = body.status === "draft" ? null : now;
 
   try {
-    await db
-      .prepare(
-        "INSERT INTO posts (id, slug, title, excerpt, content, status, author_id, published_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-      )
-      .bind(
+    await run(
+      "INSERT INTO posts (id, slug, title, excerpt, content, status, author_id, published_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      [
         id,
         body.slug,
         body.title.trim(),
@@ -240,10 +232,10 @@ export const POST: APIRoute = async ({ request, locals }) => {
         publishedAt,
         now,
         now,
-      )
-      .run();
+      ],
+    );
 
-    if (tags.length) await syncPostTags(db, id, tags);
+    if (tags.length) await syncPostTags(id, tags);
 
     return new Response(
       JSON.stringify({ id, slug: body.slug, title: body.title }),
@@ -265,16 +257,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
 };
 
 // ── PATCH ──
-export const PATCH: APIRoute = async ({ request, locals, url }) => {
-  const auth = await requireAdmin(request, locals);
-  if (auth.error) return auth.error;
-  const { env } = auth;
-  const db: D1Database = env.DB;
-  if (!db)
-    return new Response(JSON.stringify({ error: "DB not configured" }), {
-      status: 500,
-      headers: { "content-type": "application/json" },
-    });
+export const PATCH: APIRoute = async ({ request, url }) => {
+  const gate = await requireAdmin(request);
+  if (gate.error) return gate.error;
 
   let body: any;
   try {
@@ -294,10 +279,7 @@ export const PATCH: APIRoute = async ({ request, locals, url }) => {
     });
 
   // fetch existing to validate
-  const existing = await db
-    .prepare("SELECT id FROM posts WHERE id=?")
-    .bind(id)
-    .first();
+  const existing = await first("SELECT id FROM posts WHERE id=?", [id]);
   if (!existing)
     return new Response(JSON.stringify({ error: "post not found" }), {
       status: 404,
@@ -353,10 +335,9 @@ export const PATCH: APIRoute = async ({ request, locals, url }) => {
     values.push(body.status);
     // if published and no published_at, set now; if draft, keep as is? set published_at accordingly
     if (body.status === "published") {
-      const cur = await db
-        .prepare("SELECT published_at FROM posts WHERE id=?")
-        .bind(id)
-        .first<{ published_at: number | null }>();
+      const cur = (await first("SELECT published_at FROM posts WHERE id=?", [
+        id,
+      ])) as { published_at: number | null } | null;
       if (!cur?.published_at) {
         fields.push("published_at=?");
         values.push(now);
@@ -369,14 +350,11 @@ export const PATCH: APIRoute = async ({ request, locals, url }) => {
 
   try {
     if (fields.length > 1) {
-      await db
-        .prepare(`UPDATE posts SET ${fields.join(", ")} WHERE id=?`)
-        .bind(...values)
-        .run();
+      await run(`UPDATE posts SET ${fields.join(", ")} WHERE id=?`, values);
     }
     if (body.tags !== undefined) {
       const tags = parseTags(body.tags);
-      await syncPostTags(db, id, tags);
+      await syncPostTags(id, tags);
     }
     return new Response(JSON.stringify({ id }), {
       status: 200,
@@ -398,16 +376,9 @@ export const PATCH: APIRoute = async ({ request, locals, url }) => {
 };
 
 // ── DELETE ──
-export const DELETE: APIRoute = async ({ request, locals, url }) => {
-  const auth = await requireAdmin(request, locals);
-  if (auth.error) return auth.error;
-  const { env } = auth;
-  const db: D1Database = env.DB;
-  if (!db)
-    return new Response(JSON.stringify({ error: "DB not configured" }), {
-      status: 500,
-      headers: { "content-type": "application/json" },
-    });
+export const DELETE: APIRoute = async ({ request, url }) => {
+  const gate = await requireAdmin(request);
+  if (gate.error) return gate.error;
 
   let id: string | null = url.searchParams.get("id");
   if (!id) {
@@ -422,10 +393,7 @@ export const DELETE: APIRoute = async ({ request, locals, url }) => {
       headers: { "content-type": "application/json" },
     });
 
-  const existing = await db
-    .prepare("SELECT id FROM posts WHERE id=?")
-    .bind(id)
-    .first();
+  const existing = await first("SELECT id FROM posts WHERE id=?", [id]);
   if (!existing)
     return new Response(JSON.stringify({ error: "post not found" }), {
       status: 404,
@@ -433,8 +401,8 @@ export const DELETE: APIRoute = async ({ request, locals, url }) => {
     });
 
   // cascade will delete post_tags via FK, but ensure
-  await db.prepare("DELETE FROM post_tags WHERE post_id=?").bind(id).run();
-  await db.prepare("DELETE FROM posts WHERE id=?").bind(id).run();
+  await run("DELETE FROM post_tags WHERE post_id=?", [id]);
+  await run("DELETE FROM posts WHERE id=?", [id]);
 
   return new Response(JSON.stringify({ ok: true, id }), {
     status: 200,

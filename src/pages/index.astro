@@ -3,6 +3,9 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import Banner from "../components/Banner.astro";
 import Card from "../components/Card.astro";
 import { seedData } from "../db/seed";
+import { db } from "../db/client";
+import { posts as postsTable, postTags, tags as tagsTable } from "../db/schema";
+import { eq, sql } from "drizzle-orm";
 
 // Pagination
 const url = new URL(Astro.request.url);
@@ -20,32 +23,36 @@ let total = 0;
 let usedMock = false;
 
 try {
-  const runtime: any = (Astro.locals as any)?.runtime;
-  const env = runtime?.env ?? (Astro.locals as any)?.env ?? {};
-  const db: D1Database | undefined = env.DB;
-
-  if (db) {
-    // fetch paginated published posts
-    const countRes = await db.prepare("SELECT COUNT(*) as cnt FROM posts WHERE status = 'published'").first<{ cnt: number }>();
-    total = countRes?.cnt ?? 0;
-    const res = await db.prepare(
-      "SELECT id, slug, title, excerpt, content, published_at as publishedAt, created_at as createdAt FROM posts WHERE status='published' ORDER BY published_at DESC, created_at DESC LIMIT ? OFFSET ?"
-    ).bind(limit, offset).all<PostRow>();
-    const rows = (res.results ?? res) as any[];
-    // fetch tags per post (N+1 small, ok for 10)
-    for (const r of rows) {
-      const tagRes = await db.prepare(
-        "SELECT t.slug FROM tags t JOIN post_tags pt ON pt.tag_id = t.id WHERE pt.post_id = ?"
-      ).bind(r.id).all<{ slug: string }>();
-      const trows = (tagRes.results ?? tagRes) as any[];
-      posts.push({ ...r, tags: trows.map((x: any) => x.slug) });
-    }
-    if (posts.length === 0 && total === 0) {
-      // empty DB -> fallback to mock
-      throw new Error("empty db");
-    }
-  } else {
-    throw new Error("no D1");
+  const countRows = await db
+    .select({ cnt: sql<number>`count(*)` })
+    .from(postsTable)
+    .where(eq(postsTable.status, "published"));
+  total = countRows[0]?.cnt ?? 0;
+  const rows = await db.query.posts.findMany({
+    where: (p, { eq }) => eq(p.status, "published"),
+    orderBy: (p, { desc }) => [desc(p.publishedAt), desc(p.createdAt)],
+    limit,
+    offset,
+  });
+  for (const r of rows) {
+    const tagRows = await db
+      .select({ slug: tagsTable.slug })
+      .from(tagsTable)
+      .innerJoin(postTags, eq(postTags.tagId, tagsTable.id))
+      .where(eq(postTags.postId, r.id));
+    posts.push({
+      id: r.id,
+      slug: r.slug,
+      title: r.title,
+      excerpt: r.excerpt,
+      content: r.content,
+      publishedAt: r.publishedAt,
+      createdAt: r.createdAt,
+      tags: tagRows.map((x) => x.slug),
+    });
+  }
+  if (posts.length === 0 && total === 0) {
+    throw new Error("empty db");
   }
 } catch {
   usedMock = true;
