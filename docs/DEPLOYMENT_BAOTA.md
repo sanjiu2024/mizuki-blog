@@ -151,7 +151,9 @@ export default defineConfig({
 cd /www/wwwroot/blog.example.com
 
 # 1. 安装依赖（用 pnpm，保持与 lockfile 一致）
+#    postinstall 会自动 patch @astrojs/node 的 applyPolyfills 导入（astro@7.3.1 暂无此导出，@astrojs/node@7.0.4 需移除）
 pnpm install --frozen-lockfile
+# 期望：postinstall 自动执行 scripts/patch-astro-node.mjs → [patch] .../dist/server.js
 
 # 2. 类型检查（可选，但推荐，0 errors 方可继续）
 pnpm astro check
@@ -159,7 +161,7 @@ pnpm astro check
 
 # 3. 构建（产物 dist/server/entry.mjs + dist/client/）
 pnpm build
-# 期望：[build] Complete! 3-5s
+# 期望：[build] Complete! 3-5s（若仍报 applyPolyfills，执行 node ./scripts/patch-astro-node.mjs 后重试）
 
 # 4. 建本地 SQLite 库（D1 → better-sqlite3，FTS5 自动包含）
 mkdir -p data logs
@@ -467,7 +469,7 @@ pnpm exec drizzle-kit studio  # 浏览器打开 https://local.drizzle.studio
 | `better-auth` 启动报 `secret must be at least 32 characters` | `BETTER_AUTH_SECRET` 未设或过短 | 终端 `openssl rand -base64 32` 重新生成，填入 PM2 环境变量后 `pm2 restart` |
 | `GitHub OAuth 404 / redirect_uri_mismatch` | 回调 URL 未追加线上域名 | GitHub → OAuth App → **Authorization callback URL** 改为 `https://blog.example.com/api/auth/callback/github`（追加，原 localhost 可保留） |
 | `pm2 logs` 报 `EACCES: permission denied, open './data/mizuki.db'` | `data/mizuki.db` 属 `root` | `chown www:www ./data/mizuki.db*` |
-| `pnpm build` 报 `applyPolyfills` | 误装 `@astrojs/node@8+` 配 `astro@7.3` | 已在 `main` 固定 `@astrojs/node@7.0.4` 并 patch，`pnpm install --frozen-lockfile` 即可 |
+| `pnpm build` 报 `applyPolyfills` | `astro@7.3.1` 缺 `applyPolyfills` 但 `@astrojs/node@7.0.4` 需它 | 已在 `main` 加 `postinstall: node ./scripts/patch-astro-node.mjs` 自动移除，`pnpm install` 后自动修复，无需手动 `sed` |
 | 访问 `https` 报证书错误 | 未申请 Let's Encrypt | 宝塔 → 网站 → SSL → Let's Encrypt → 申请 → 开启强制HTTPS |
 
 ---
