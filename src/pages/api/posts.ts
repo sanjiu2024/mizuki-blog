@@ -56,7 +56,7 @@ async function requireAdmin(request: Request) {
       }),
     };
   }
-  if (user.role !== "admin") {
+  if (!["admin", "super_admin"].includes(user.role)) {
     return {
       user: null,
       error: new Response(JSON.stringify({ error: "Forbidden" }), {
