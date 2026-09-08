@@ -73,7 +73,7 @@ export const GET: APIRoute = async (ctx) => {
   const postId =
     url.searchParams.get("postId") ?? url.searchParams.get("post_id");
   if (!postId)
-    return new Response(JSON.stringify({ error: "postId required" }), {
+    return new Response(JSON.stringify({ error: "缺少 postId 参数" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
@@ -142,7 +142,7 @@ export const POST: APIRoute = async (ctx) => {
   const ip = getClientIp(ctx.request as Request);
   if (isRateLimited(ip)) {
     return new Response(
-      JSON.stringify({ error: "Too many requests, try again later" }),
+      JSON.stringify({ error: "请求过于频繁，请稍后再试" }),
       { status: 429, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -156,19 +156,19 @@ export const POST: APIRoute = async (ctx) => {
   } catch {}
   if (!userId)
     return new Response(
-      JSON.stringify({ error: "Unauthorized - please login" }),
+      JSON.stringify({ error: "未登录，请先登录" }),
       { status: 401 },
     );
 
   const { postId, content, parentId } = body;
   if (!postId || !content?.trim())
     return new Response(
-      JSON.stringify({ error: "postId and content required" }),
+      JSON.stringify({ error: "请填写文章 ID 与评论内容" }),
       { status: 400 },
     );
   if (content.trim().length > 2000)
     return new Response(
-      JSON.stringify({ error: "Content too long (max 2000)" }),
+      JSON.stringify({ error: "评论过长（最多 2000 字）" }),
       { status: 400 },
     );
 
@@ -190,12 +190,12 @@ export const POST: APIRoute = async (ctx) => {
 
 async function handleLike(ctx: any, commentId: string) {
   if (!commentId)
-    return new Response(JSON.stringify({ error: "commentId required" }), {
+    return new Response(JSON.stringify({ error: "缺少 commentId 参数" }), {
       status: 400,
     });
   const ip = getClientIp(ctx.request as Request);
   if (isRateLimited(`like:${ip}`, 10, 60_000)) {
-    return new Response(JSON.stringify({ error: "Too many likes" }), {
+    return new Response(JSON.stringify({ error: "点赞过于频繁，请稍后再试" }), {
       status: 429,
     });
   }
@@ -207,7 +207,7 @@ async function handleLike(ctx: any, commentId: string) {
   } catch {}
   if (!userId)
     return new Response(
-      JSON.stringify({ error: "Unauthorized - please login" }),
+      JSON.stringify({ error: "未登录，请先登录" }),
       { status: 401 },
     );
   const id = `r_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
@@ -241,7 +241,7 @@ async function handleLike(ctx: any, commentId: string) {
         { headers: { "Content-Type": "application/json" } },
       );
     }
-    return new Response(JSON.stringify({ error: "Failed to like" }), {
+    return new Response(JSON.stringify({ error: "点赞失败" }), {
       status: 500,
     });
   }

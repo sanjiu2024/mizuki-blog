@@ -2,59 +2,119 @@
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { db } from "../../db/client";
+import { getLangFromUrl, createTranslator } from "../../i18n";
+
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
 
 const me = Astro.locals.user;
+const statusFilter = Astro.url.searchParams.get("status") ?? "all";
+const q = (Astro.url.searchParams.get("q") ?? "").trim();
 
-type PostRow = { id: string; slug: string; title: string; status: string; created_at: number | null };
+type PostRow = { id: string; slug: string; title: string; status: string; cover: string | null; category: string | null; created_at: number | null };
 let mine: PostRow[] = [];
 let total = 0;
+let counts = { all: 0, published: 0, draft: 0 };
 try {
+  let cols = "id, slug, title, status, created_at";
+  try {
+    await db.$client.execute({ sql: "SELECT cover FROM posts LIMIT 1", args: [] });
+    cols = "id, slug, title, status, cover, category, created_at";
+  } catch { /* pre-migration DB */ }
   const rs = await db.$client.execute({
-    sql: "SELECT id, slug, title, status, created_at FROM posts WHERE author_id = ? ORDER BY created_at DESC",
+    sql: `SELECT ${cols} FROM posts WHERE author_id = ? ORDER BY created_at DESC`,
     args: [me?.id ?? ""],
   });
-  mine = rs.rows as unknown as PostRow[];
+  const all = (rs.rows as unknown as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id ?? ""),
+    slug: String(r.slug ?? ""),
+    title: String(r.title ?? ""),
+    status: String(r.status ?? "published"),
+    cover: (r.cover as string | null) ?? null,
+    category: (r.category as string | null) ?? "未分类",
+    created_at: (r.created_at as number | null) ?? null,
+  }));
+  counts = {
+    all: all.length,
+    published: all.filter((p) => p.status === "published").length,
+    draft: all.filter((p) => p.status !== "published").length,
+  };
+  mine = all.filter((p) => {
+    if (statusFilter === "published" && p.status !== "published") return false;
+    if (statusFilter === "draft" && p.status === "published") return false;
+    if (q && !p.title.toLowerCase().includes(q.toLowerCase())) return false;
+    return true;
+  });
   const c = await db.$client.execute({ sql: "SELECT COUNT(*) AS n FROM posts", args: [] });
   total = Number((c.rows[0] as unknown as Record<string, unknown>).n ?? 0);
 } catch {
   mine = [];
 }
+
+const tabHref = (s: string) => {
+  const u = new URL(Astro.url);
+  if (s === "all") u.searchParams.delete("status");
+  else u.searchParams.set("status", s);
+  return u.pathname + (u.search ? u.search : "");
+};
 ---
 
-<BaseLayout title="作者后台 — Mizuki">
+<BaseLayout title={`${_("author.pageTitle")} — Mizuki`} lang={lang}>
   <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-bold">作者后台</h1>
-        <p class="text-sm opacity-60 mt-1">欢迎，{me?.name || me?.email} · 我的文章 {mine.length} / 全站 {total}</p>
+        <h1 class="text-2xl font-bold">{_("author.title")}</h1>
+        <p class="text-sm opacity-60 mt-1">{_("author.stats", { name: me?.name || me?.email || "", mine: counts.all, total })}</p>
       </div>
-      <a href="/admin/posts/new" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">+ 新建文章</a>
+      <a href="/admin/posts/new" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">{_("admin.newPost")}</a>
     </div>
+
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <a href={tabHref("all")} class={`px-4 py-1.5 text-sm font-medium rounded-full border ${statusFilter !== "published" && statusFilter !== "draft" ? "text-white" : "btn-plain"}`} style={statusFilter !== "published" && statusFilter !== "draft" ? "background: var(--primary); border-color: var(--primary);" : "border-color: var(--line-divider);"}>{_("admin.tabAll")} ({counts.all})</a>
+      <a href={tabHref("published")} class={`px-4 py-1.5 text-sm font-medium rounded-full border ${statusFilter === "published" ? "text-white" : "btn-plain"}`} style={statusFilter === "published" ? "background: var(--primary); border-color: var(--primary);" : "border-color: var(--line-divider);"}>{_("admin.tabPublished")} ({counts.published})</a>
+      <a href={tabHref("draft")} class={`px-4 py-1.5 text-sm font-medium rounded-full border ${statusFilter === "draft" ? "text-white" : "btn-plain"}`} style={statusFilter === "draft" ? "background: var(--primary); border-color: var(--primary);" : "border-color: var(--line-divider);"}>{_("admin.tabDraft")} ({counts.draft})</a>
+    </div>
+
+    <form method="get" action="/author/dashboard" class="flex gap-2 mb-4">
+      <input type="hidden" name="status" value={statusFilter} />
+      <input name="q" value={q} placeholder={_("admin.searchPlaceholder")} class="flex-1 min-w-[12rem] rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+      <button type="submit" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">{_("search.button")}</button>
+    </form>
 
     <div class="card-base enable-card-border overflow-hidden" style="border-radius: var(--radius-large);">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="text-xs opacity-60 border-b" style="border-color: var(--line-divider);">
             <tr>
-              <th class="text-left px-4 py-3 font-medium">标题</th>
-              <th class="text-left px-4 py-3 font-medium hidden sm:table-cell">Slug</th>
-              <th class="text-left px-4 py-3 font-medium">状态</th>
-              <th class="text-right px-4 py-3 font-medium">操作</th>
+              <th class="text-left px-4 py-3 font-medium">{_("admin.thCover")}</th>
+              <th class="text-left px-4 py-3 font-medium">{_("admin.thTitle")}</th>
+              <th class="text-left px-4 py-3 font-medium hidden sm:table-cell">{_("admin.thSlug")}</th>
+              <th class="text-left px-4 py-3 font-medium">{_("admin.thCategory")}</th>
+              <th class="text-left px-4 py-3 font-medium">{_("admin.thStatus")}</th>
+              <th class="text-right px-4 py-3 font-medium">{_("admin.thActions")}</th>
             </tr>
           </thead>
           <tbody>
             {mine.length === 0 ? (
-              <tr><td colspan="4" class="text-center py-12 opacity-50">还没有文章，去写第一篇吧</td></tr>
+              <tr><td colspan="6" class="text-center py-12 opacity-50">{_("author.empty")}</td></tr>
             ) : mine.map((p) => (
               <tr class="border-b last:border-0" style="border-color: var(--line-divider);">
-                <td class="px-4 py-3 font-medium max-w-[16rem] truncate">{p.title}</td>
+                <td class="px-4 py-2">
+                  {p.cover ? (
+                    <img src={p.cover} alt="" loading="lazy" class="w-14 h-10 object-cover rounded-md border" style="border-color: var(--line-divider);" />
+                  ) : (
+                    <span class="inline-flex w-14 h-10 items-center justify-center rounded-md text-xs opacity-40 border" style="border-color: var(--line-divider);">—</span>
+                  )}
+                </td>
+                <td class="px-4 py-3 font-medium max-w-[14rem] truncate" title={p.title}>{p.title}</td>
                 <td class="px-4 py-3 opacity-60 hidden sm:table-cell">{p.slug}</td>
+                <td class="px-4 py-3"><span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium" style="background: var(--btn-regular-bg); color: var(--btn-content);">{p.category ?? "未分类"}</span></td>
                 <td class="px-4 py-3">
-                  <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{p.status}</span>
+                  <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{_(p.status === "published" ? "status.published" : "status.draft")}</span>
                 </td>
                 <td class="px-4 py-3 text-right whitespace-nowrap">
-                  <a href={`/posts/${p.slug}`} class="btn-plain px-3 py-1 text-xs font-medium mr-1">查看</a>
-                  <a href={`/admin/posts/${p.id}`} class="btn-plain px-3 py-1 text-xs font-medium">编辑</a>
+                  <a href={p.status === "published" ? `/posts/${p.slug}` : `/posts/${p.slug}?preview=1`} target="_blank" class="btn-plain px-3 py-1 text-xs font-medium mr-1">{p.status === "published" ? _("author.view") : _("admin.preview")}</a>
+                  <a href={`/admin/posts/${p.id}`} class="btn-plain px-3 py-1 text-xs font-medium">{_("common.edit")}</a>
                 </td>
               </tr>
             ))}
@@ -63,7 +123,7 @@ try {
       </div>
     </div>
     <div class="mt-6">
-      <a href="/" class="btn-plain px-4 py-2 text-sm">← 返回首页</a>
+      <a href="/" class="btn-plain px-4 py-2 text-sm">{_("author.backHome")}</a>
     </div>
   </div>
 </BaseLayout>

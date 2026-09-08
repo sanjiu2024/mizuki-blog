@@ -67,14 +67,14 @@ const currentPath = Astro.url.pathname + Astro.url.search;
           <a href={lang === "en" ? "/en/tags" : "/tags"} class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">{_("nav.tags")}</a>
           <a href="/rss.xml" class="btn-plain px-3 py-1.5 text-sm font-medium hidden sm:inline-flex">{_("nav.rss")}</a>
           <LanguageSwitcher lang={lang} currentPath={currentPath} />
-          <SearchModal lang={lang} placeholder={_("search.placeholder")} searchLabel={_("nav.search")} closeLabel={_("common.close")} />
+          <SearchModal lang={lang} placeholder={_("search.placeholder")} searchLabel={_("nav.search")} closeLabel={_("common.close")} navigateLabel={_("searchModal.navigate")} openLabel={_("searchModal.open")} searchingText={_("searchModal.searching")} noResultsTemplate={_("searchModal.noResults")} countTemplate={_("searchModal.count")} />
           <ThemeToggle />
           <div id="auth-area" class="flex items-center gap-2 ml-1">
             <a id="auth-login-link" href={lang === "en" ? "/en/login" : "/login"} class="btn-regular px-3 py-1.5 text-sm font-medium hidden">{_("nav.login")}</a>
             <div id="auth-user" class="hidden items-center gap-2">
               <img id="auth-avatar" alt="avatar" class="h-7 w-7 rounded-full object-cover hidden" />
               <span id="auth-name" class="text-sm font-medium max-w-[8rem] truncate hidden sm:inline"></span>
-              <a id="auth-backend" href="/admin" class="btn-plain px-3 py-1.5 text-sm hidden">后台</a>
+              <a id="auth-backend" href="/admin" class="btn-plain px-3 py-1.5 text-sm hidden">{_("nav.admin")}</a>
               <button id="auth-logout" class="btn-plain px-3 py-1.5 text-sm">{_("nav.logout")}</button>
             </div>
           </div>
@@ -108,7 +108,7 @@ const currentPath = Astro.url.pathname + Astro.url.search;
         const avatar = document.getElementById('auth-avatar');
         const nameEl = document.getElementById('auth-name');
         try {
-          const res = await fetch('/api/auth/get-session', { credentials: 'include' });
+          const res = await fetch('/api/auth/get-session', { credentials: 'include', cache: 'no-store' });
           const data = await res.json().catch(() => null);
           const user = data?.user || data?.data?.user || null;
           if (user) {
@@ -135,11 +135,25 @@ const currentPath = Astro.url.pathname + Astro.url.search;
       document.addEventListener('astro:page-load', refreshAuth);
       // Logout must survive ClientRouter navigations (header DOM is swapped),
       // so use document-level delegation instead of a one-time binding.
+      async function doSignOut() {
+        const res = await fetch('/api/auth/sign-out', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!res.ok) throw new Error('sign-out failed: ' + res.status);
+      }
       async function signOut() {
+        const home = document.body.dataset.lang === 'en' ? '/en/' : '/';
         try {
-          await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' });
+          await doSignOut();
+          const check = await fetch('/api/auth/get-session', { credentials: 'include', cache: 'no-store' });
+          const data = await check.json().catch(() => null);
+          const user = data?.user || data?.data?.user || null;
+          if (user) await doSignOut();
         } catch {}
-        location.href = document.body.dataset.lang === 'en' ? '/en/' : '/';
+        location.replace(home);
       }
       document.addEventListener('click', (e) => {
         const btn = e.target && e.target.closest ? e.target.closest('#auth-logout') : null;

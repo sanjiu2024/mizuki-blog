@@ -1,52 +1,82 @@
 ---
 export const prerender = false;
 import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { getLangFromUrl, createTranslator } from "../../../i18n";
+import { POST_CATEGORIES } from "../../../db/schema";
+
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
 ---
 
-<BaseLayout title="新建文章 — 后台">
+<BaseLayout title={`${_("admin.newTitle")} — Mizuki`} lang={lang}>
   <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
-    <h1 class="text-2xl font-bold mb-6">新建文章</h1>
+    <h1 class="text-2xl font-bold mb-6">{_("admin.newTitle")}</h1>
     <form id="new-form" class="card-base enable-card-border p-6 space-y-5" style="border-radius: var(--radius-large);">
       <div>
-        <label class="text-sm font-medium">标题 *</label>
-        <input name="title" required placeholder="文章标题" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <label class="text-sm font-medium">{_("form.title")} *</label>
+        <input name="title" required placeholder={_("form.title")} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
       </div>
       <div>
-        <label class="text-sm font-medium">Slug * <span class="opacity-50 font-normal">只允许 a-z0-9-</span></label>
+        <label class="text-sm font-medium">{_("form.slug")} * <span class="opacity-50 font-normal">{_("form.slugHint")}</span></label>
         <input name="slug" required pattern="^[a-z0-9-]+$" placeholder="hello-mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
       </div>
-      <div>
-        <label class="text-sm font-medium">摘要</label>
-        <textarea name="excerpt" rows="2" placeholder="一句话简介" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
+      <div class="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label class="text-sm font-medium">{_("form.cover")} <span class="opacity-50 font-normal">{_("form.coverHint")}</span></label>
+          <input name="cover" type="url" placeholder={_("form.coverPlaceholder")} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+          <div id="cover-preview-wrap" class="hidden mt-2">
+            <p class="text-xs opacity-60 mb-1">{_("admin.coverPreview")}</p>
+            <img id="cover-preview" alt="" class="w-full max-h-44 object-cover rounded-lg border" style="border-color: var(--line-divider);" />
+          </div>
+        </div>
+        <div>
+          <label class="text-sm font-medium">{_("form.category")}</label>
+          <select name="category" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">
+            {POST_CATEGORIES.map((c) => (
+              <option value={c} selected={c === "未分类"}>{c}</option>
+            ))}
+          </select>
+          <div class="mt-4">
+            <label class="text-sm font-medium">{_("form.status")}</label>
+            <div class="mt-1 flex gap-4 text-sm">
+              <label class="inline-flex items-center gap-1.5"><input type="radio" name="status" value="published" checked />{_("status.published")}</label>
+              <label class="inline-flex items-center gap-1.5"><input type="radio" name="status" value="draft" />{_("status.draft")}</label>
+            </div>
+            <p class="text-xs opacity-50 mt-1">{_("form.saveDraftHint")}</p>
+          </div>
+        </div>
       </div>
       <div>
-        <label class="text-sm font-medium">正文 * (Markdown)</label>
+        <label class="text-sm font-medium">{_("form.excerpt")} <span class="opacity-50 font-normal">{_("form.excerptHint")}</span></label>
+        <textarea name="excerpt" rows="2" maxlength="300" placeholder={_("form.excerptPlaceholder")} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
+        <p class="text-xs opacity-50 mt-1"><span id="excerpt-count">0</span> / 300</p>
+      </div>
+      <div>
+        <label class="text-sm font-medium">{_("form.contentMarkdown")} *</label>
         <textarea name="content" required rows="12" placeholder="# Hello Mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
       </div>
       <div>
-        <label class="text-sm font-medium">标签 <span class="opacity-50 font-normal">逗号分隔</span></label>
+        <label class="text-sm font-medium">{_("form.tags")} <span class="opacity-50 font-normal">{_("form.tagsHint")}</span></label>
         <input name="tags" placeholder="astro, mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
       </div>
-      <div>
-        <label class="text-sm font-medium">状态</label>
-        <select name="status" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">
-          <option value="published">published</option>
-          <option value="draft">draft</option>
-        </select>
-      </div>
       <p id="form-msg" class="text-sm hidden"></p>
-      <div class="flex gap-3">
-        <button type="submit" class="btn-regular px-6 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">发布</button>
-        <a href="/admin" class="btn-plain px-6 py-2 text-sm rounded-lg">取消</a>
+      <div class="flex flex-wrap gap-3">
+        <button type="submit" class="btn-regular px-6 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">{_("admin.publish")}</button>
+        <button type="button" id="preview-btn" class="btn-plain px-6 py-2 text-sm rounded-lg border" style="border-color: var(--line-divider);">{_("admin.preview")}</button>
+        <a href="/admin" class="btn-plain px-6 py-2 text-sm rounded-lg">{_("common.cancel")}</a>
       </div>
     </form>
   </div>
-  <script is:inline>
+  <script is:inline define:vars={{ submitting: _("common.submitting"), publishSuccess: _("admin.publishSuccess"), publishFail: _("admin.publishFail"), coverInvalid: _("admin.coverInvalid") }}>
     const form = document.getElementById('new-form');
     const msg = document.getElementById('form-msg');
-    // auto slug from title
     const titleEl = form?.querySelector('input[name="title"]');
     const slugEl = form?.querySelector('input[name="slug"]');
+    const coverEl = form?.querySelector('input[name="cover"]');
+    const previewWrap = document.getElementById('cover-preview-wrap');
+    const previewImg = document.getElementById('cover-preview');
+    const excerptEl = form?.querySelector('textarea[name="excerpt"]');
+    const excerptCount = document.getElementById('excerpt-count');
     titleEl?.addEventListener('input', () => {
       if (!slugEl.value || slugEl.dataset.auto === '1') {
         const s = titleEl.value.toLowerCase().trim().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'').replace(/-+/g,'-');
@@ -55,24 +85,47 @@ import BaseLayout from "../../../layouts/BaseLayout.astro";
       }
     });
     slugEl?.addEventListener('input', () => { slugEl.dataset.auto = '0'; });
-
-    form?.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    excerptEl?.addEventListener('input', () => { if (excerptCount) excerptCount.textContent = String(excerptEl.value.length); });
+    coverEl?.addEventListener('input', () => {
+      const v = coverEl.value.trim();
+      if (v && /^(https?:\/\/|\/)[^\s]{1,500}$/.test(v)) {
+        previewImg.src = v;
+        previewWrap?.classList.remove('hidden');
+      } else {
+        previewWrap?.classList.add('hidden');
+      }
+    });
+    const collect = () => {
       const fd = new FormData(form);
-      const body = {
+      return {
         title: String(fd.get('title')||'').trim(),
         slug: String(fd.get('slug')||'').trim(),
+        cover: String(fd.get('cover')||'').trim() || null,
+        category: String(fd.get('category')||'未分类'),
         excerpt: String(fd.get('excerpt')||'').trim(),
         content: String(fd.get('content')||'').trim(),
         tags: String(fd.get('tags')||'').trim(),
         status: String(fd.get('status')||'published'),
       };
-      if (msg) { msg.textContent = '提交中...'; msg.className = 'text-sm'; msg.classList.remove('hidden'); }
+    };
+    document.getElementById('preview-btn')?.addEventListener('click', () => {
+      const b = collect();
+      if (!b.slug) { if (msg) { msg.textContent = 'Slug required'; msg.className = 'text-sm text-red-500'; msg.classList.remove('hidden'); } return; }
+      window.open(`/posts/${encodeURIComponent(b.slug)}?preview=1`, '_blank');
+    });
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = collect();
+      if (body.cover && !/^(https?:\/\/|\/)[^\s]{1,500}$/.test(body.cover)) {
+        if (msg) { msg.textContent = coverInvalid; msg.className = 'text-sm text-red-500'; msg.classList.remove('hidden'); }
+        return;
+      }
+      if (msg) { msg.textContent = submitting; msg.className = 'text-sm'; msg.classList.remove('hidden'); }
       try {
         const res = await fetch('/api/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const data = await res.json().catch(()=>({}));
-        if (!res.ok) throw new Error(data.error || '发布失败');
-        if (msg) { msg.textContent = '发布成功，跳转中...'; msg.className = 'text-sm text-green-600'; }
+        if (!res.ok) throw new Error(data.error || publishFail);
+        if (msg) { msg.textContent = publishSuccess; msg.className = 'text-sm text-green-600'; }
         location.href = '/admin';
       } catch (err) {
         if (msg) { msg.textContent = err.message || String(err); msg.className = 'text-sm text-red-500'; }

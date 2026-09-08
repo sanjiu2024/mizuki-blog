@@ -2,52 +2,135 @@
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { db } from "../../db/client";
+import { getLangFromUrl, createTranslator, t as translate } from "../../i18n";
 
-let posts: any[] = [];
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
+
+const statusFilter = Astro.url.searchParams.get("status") ?? "all";
+const q = (Astro.url.searchParams.get("q") ?? "").trim();
+const categoryFilter = (Astro.url.searchParams.get("category") ?? "").trim();
+
+type AdminRow = {
+  id: string; slug: string; title: string; excerpt: string | null;
+  cover: string | null; category: string | null; status: string;
+  createdAt: number | null; publishedAt: number | null;
+};
+
+let posts: AdminRow[] = [];
+let counts = { all: 0, published: 0, draft: 0 };
+let categories: string[] = [];
 try {
+  let cols = "id, slug, title, excerpt, status, created_at as createdAt, published_at as publishedAt";
+  try {
+    await db.$client.execute({ sql: "SELECT cover FROM posts LIMIT 1", args: [] });
+    cols = "id, slug, title, excerpt, cover, category, status, created_at as createdAt, published_at as publishedAt";
+  } catch { /* pre-migration DB: old columns only */ }
   const rs = await db.$client.execute({
-    sql: "SELECT id, slug, title, excerpt, status, created_at as createdAt, published_at as publishedAt FROM posts ORDER BY created_at DESC",
+    sql: `SELECT ${cols} FROM posts ORDER BY created_at DESC`,
     args: [],
   });
-  posts = rs.rows as unknown as any[];
+  const all = (rs.rows as unknown as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id ?? ""),
+    slug: String(r.slug ?? ""),
+    title: String(r.title ?? ""),
+    excerpt: (r.excerpt as string | null) ?? null,
+    cover: (r.cover as string | null) ?? null,
+    category: (r.category as string | null) ?? "未分类",
+    status: String(r.status ?? "published"),
+    createdAt: (r.createdAt as number | null) ?? null,
+    publishedAt: (r.publishedAt as number | null) ?? null,
+  }));
+  counts = {
+    all: all.length,
+    published: all.filter((p) => p.status === "published").length,
+    draft: all.filter((p) => p.status !== "published").length,
+  };
+  categories = [...new Set(all.map((p) => p.category ?? "未分类"))].sort();
+  posts = all.filter((p) => {
+    if (statusFilter === "published" && p.status !== "published") return false;
+    if (statusFilter === "draft" && p.status === "published") return false;
+    if (categoryFilter && p.category !== categoryFilter) return false;
+    if (q && !p.title.toLowerCase().includes(q.toLowerCase())) return false;
+    return true;
+  });
 } catch (e) {
   posts = [];
 }
+
+const tabHref = (s: string) => {
+  const u = new URL(Astro.url);
+  if (s === "all") u.searchParams.delete("status");
+  else u.searchParams.set("status", s);
+  return u.pathname + (u.search ? u.search : "");
+};
 ---
 
-<BaseLayout title="后台管理 — Mizuki">
+<BaseLayout title={`${_("admin.pageTitle")} — Mizuki`} lang={lang}>
   <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold">后台管理</h1>
-      <a href="/admin/posts/new" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">+ 新建文章</a>
+      <div>
+        <h1 class="text-2xl font-bold">{_("admin.title")}</h1>
+        <p class="text-sm opacity-60 mt-1">{_("admin.countLabel", { n: counts.all })}</p>
+      </div>
+      <a href="/admin/posts/new" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">{_("admin.newPost")}</a>
     </div>
+
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <a href={tabHref("all")} class={`px-4 py-1.5 text-sm font-medium rounded-full border ${statusFilter === "all" || !["published","draft"].includes(statusFilter) ? "text-white" : "btn-plain"}`} style={statusFilter === "all" || !["published","draft"].includes(statusFilter) ? "background: var(--primary); border-color: var(--primary);" : "border-color: var(--line-divider);"}>{_("admin.tabAll")} ({counts.all})</a>
+      <a href={tabHref("published")} class={`px-4 py-1.5 text-sm font-medium rounded-full border ${statusFilter === "published" ? "text-white" : "btn-plain"}`} style={statusFilter === "published" ? "background: var(--primary); border-color: var(--primary);" : "border-color: var(--line-divider);"}>{_("admin.tabPublished")} ({counts.published})</a>
+      <a href={tabHref("draft")} class={`px-4 py-1.5 text-sm font-medium rounded-full border ${statusFilter === "draft" ? "text-white" : "btn-plain"}`} style={statusFilter === "draft" ? "background: var(--primary); border-color: var(--primary);" : "border-color: var(--line-divider);"}>{_("admin.tabDraft")} ({counts.draft})</a>
+    </div>
+
+    <form method="get" action="/admin" class="flex flex-wrap gap-2 mb-4">
+      <input type="hidden" name="status" value={statusFilter} />
+      <input name="q" value={q} placeholder={_("admin.searchPlaceholder")} class="flex-1 min-w-[12rem] rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+      <select name="category" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">
+        <option value="">{_("form.category")} · {_("admin.tabAll")}</option>
+        {categories.map((c) => (
+          <option value={c} selected={categoryFilter === c}>{c}</option>
+        ))}
+      </select>
+      <button type="submit" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">{_("search.button")}</button>
+    </form>
 
     <div class="card-base enable-card-border overflow-hidden" style="border-radius: var(--radius-large);">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="text-xs opacity-60 border-b" style="border-color: var(--line-divider);">
             <tr>
-              <th class="text-left px-4 py-3 font-medium">标题</th>
-              <th class="text-left px-4 py-3 font-medium hidden sm:table-cell">Slug</th>
-              <th class="text-left px-4 py-3 font-medium">状态</th>
-              <th class="text-left px-4 py-3 font-medium hidden md:table-cell">创建时间</th>
-              <th class="text-right px-4 py-3 font-medium">操作</th>
+              <th class="text-left px-4 py-3 font-medium">{_("admin.thCover")}</th>
+              <th class="text-left px-4 py-3 font-medium">{_("admin.thTitle")}</th>
+              <th class="text-left px-4 py-3 font-medium hidden sm:table-cell">{_("admin.thSlug")}</th>
+              <th class="text-left px-4 py-3 font-medium">{_("admin.thCategory")}</th>
+              <th class="text-left px-4 py-3 font-medium">{_("admin.thStatus")}</th>
+              <th class="text-left px-4 py-3 font-medium hidden md:table-cell">{_("admin.thCreated")}</th>
+              <th class="text-right px-4 py-3 font-medium">{_("admin.thActions")}</th>
             </tr>
           </thead>
           <tbody>
             {posts.length === 0 ? (
-              <tr><td colspan="5" class="text-center py-12 opacity-50">暂无文章</td></tr>
+              <tr><td colspan="7" class="text-center py-12 opacity-50">{_("admin.empty")}</td></tr>
             ) : posts.map((p) => (
               <tr class="border-b last:border-0 hover:bg-[var(--card-bg)]/50" style="border-color: var(--line-divider);">
-                <td class="px-4 py-3 font-medium max-w-[16rem] truncate">{p.title}</td>
+                <td class="px-4 py-2">
+                  {p.cover ? (
+                    <img src={p.cover} alt="" loading="lazy" class="w-14 h-10 object-cover rounded-md border" style="border-color: var(--line-divider);" />
+                  ) : (
+                    <span class="inline-flex w-14 h-10 items-center justify-center rounded-md text-xs opacity-40 border" style="border-color: var(--line-divider);">—</span>
+                  )}
+                </td>
+                <td class="px-4 py-3 font-medium max-w-[14rem] truncate" title={p.title}>{p.title}</td>
                 <td class="px-4 py-3 opacity-60 hidden sm:table-cell">{p.slug}</td>
+                <td class="px-4 py-3"><span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium" style="background: var(--btn-regular-bg); color: var(--btn-content);">{p.category ?? "未分类"}</span></td>
                 <td class="px-4 py-3">
-                  <span class={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${p.status === 'published' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>{p.status}</span>
+                  <span class={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${p.status === 'published' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>{translate(lang, p.status === 'published' ? 'status.published' : 'status.draft')}</span>
                 </td>
                 <td class="px-4 py-3 opacity-60 hidden md:table-cell text-xs">{p.createdAt ? new Date(p.createdAt).toLocaleString('zh-CN') : '-'}</td>
                 <td class="px-4 py-3 text-right whitespace-nowrap">
-                  <a href={`/admin/posts/${p.id}`} class="btn-plain px-3 py-1 text-xs font-medium mr-1">编辑</a>
-                  <button data-delete-id={p.id} class="delete-btn px-3 py-1 text-xs font-medium rounded-lg border" style="border-color: #ef4444; color: #ef4444;">删除</button>
+                  <a href={p.status === 'published' ? `/posts/${p.slug}` : `/posts/${p.slug}?preview=1`} target="_blank" title={_("admin.viewPost")} class="btn-plain px-3 py-1 text-xs font-medium mr-1">{_("admin.preview")}</a>
+                  <a href={`/admin/posts/${p.id}`} class="btn-plain px-3 py-1 text-xs font-medium mr-1">{_("common.edit")}</a>
+                  <button data-delete-id={p.id} class="delete-btn px-3 py-1 text-xs font-medium rounded-lg border" style="border-color: #ef4444; color: #ef4444;">{_("common.delete")}</button>
                 </td>
               </tr>
             ))}
@@ -57,21 +140,21 @@ try {
     </div>
     <p id="admin-msg" class="mt-4 text-sm hidden"></p>
     <div class="mt-6">
-      <a href="/" class="btn-plain px-4 py-2 text-sm">← 返回首页</a>
+      <a href="/" class="btn-plain px-4 py-2 text-sm">{_("admin.backHome")}</a>
     </div>
   </div>
-  <script is:inline>
+  <script is:inline define:vars={{ confirmDelete: _("admin.confirmDelete"), deleteSuccess: _("admin.deleteSuccess"), deleteFail: _("admin.deleteFail") }}>
     document.querySelectorAll('.delete-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-delete-id');
         if (!id) return;
-        if (!confirm('确定删除该文章？此操作不可恢复。')) return;
+        if (!confirm(confirmDelete)) return;
         const msg = document.getElementById('admin-msg');
         try {
           const res = await fetch('/api/posts', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error || '删除失败');
-          if (msg) { msg.textContent = '删除成功'; msg.className = 'mt-4 text-sm text-green-600'; msg.classList.remove('hidden'); }
+          if (!res.ok) throw new Error(data.error || deleteFail);
+          if (msg) { msg.textContent = deleteSuccess; msg.className = 'mt-4 text-sm text-green-600'; msg.classList.remove('hidden'); }
           setTimeout(() => location.reload(), 500);
         } catch (e) {
           if (msg) { msg.textContent = e.message || String(e); msg.className = 'mt-4 text-sm text-red-500'; msg.classList.remove('hidden'); }

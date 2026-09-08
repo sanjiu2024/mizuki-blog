@@ -22,13 +22,13 @@ export const POST: APIRoute = async (ctx) => {
       };
     }).api.getSession({ headers: ctx.request.headers });
   } catch {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    return new Response(JSON.stringify({ error: "未登录，请先登录" }), {
       status: 401,
     });
   }
   const requesterId = sessionData?.user?.id;
   if (!requesterId) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    return new Response(JSON.stringify({ error: "未登录，请先登录" }), {
       status: 401,
     });
   }
@@ -46,14 +46,14 @@ export const POST: APIRoute = async (ctx) => {
     requesterId,
   ]);
   if (normalizeRole(owners.rows[0]?.role) !== "super_admin") {
-    return new Response(JSON.stringify({ error: "Forbidden — super_admin only" }), {
+    return new Response(JSON.stringify({ error: "仅超级管理员可访问" }), {
       status: 403,
     });
   }
 
   const targetId = ctx.params.id;
   if (!targetId) {
-    return new Response(JSON.stringify({ error: "Missing user id" }), {
+    return new Response(JSON.stringify({ error: "缺少用户 id" }), {
       status: 400,
     });
   }
@@ -62,14 +62,14 @@ export const POST: APIRoute = async (ctx) => {
   try {
     body = (await ctx.request.json()) as { role?: unknown };
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+    return new Response(JSON.stringify({ error: "请求体格式错误" }), {
       status: 400,
     });
   }
   if (!isAssignable(body.role)) {
     return new Response(
       JSON.stringify({
-        error: `Invalid role — must be one of ${ASSIGNABLE_ROLES.join(", ")}`,
+        error: `无效的角色，只能是 ${ASSIGNABLE_ROLES.join("、")} 之一`,
       }),
       { status: 400 },
     );
@@ -77,7 +77,7 @@ export const POST: APIRoute = async (ctx) => {
 
   if (targetId === requesterId && body.role !== "super_admin") {
     return new Response(
-      JSON.stringify({ error: "Cannot demote your own super_admin account" }),
+      JSON.stringify({ error: "不能降级自己的超级管理员账号" }),
       { status: 403 },
     );
   }
@@ -86,7 +86,7 @@ export const POST: APIRoute = async (ctx) => {
     targetId,
   ]);
   if (targets.rows.length === 0) {
-    return new Response(JSON.stringify({ error: "User not found" }), {
+    return new Response(JSON.stringify({ error: "用户不存在" }), {
       status: 404,
     });
   }
@@ -101,7 +101,7 @@ export const POST: APIRoute = async (ctx) => {
     );
     if (Number(rest.rows[0]?.n ?? 0) === 0) {
       return new Response(
-        JSON.stringify({ error: "Cannot demote the last super_admin" }),
+        JSON.stringify({ error: "不能降级最后一位超级管理员" }),
         { status: 403 },
       );
     }

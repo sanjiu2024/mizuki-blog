@@ -2,10 +2,14 @@
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { db } from "../../db/client";
+import { getLangFromUrl, createTranslator, t as translate } from "../../i18n";
+
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
 
 const me = Astro.locals.user;
 if (!me || me.role !== "super_admin") {
-  return new Response("Forbidden — super_admin only", { status: 403 });
+  return new Response(translate(lang, "error.superOnly"), { status: 403 });
 }
 
 let roleCounts: Record<string, number> = {};
@@ -25,18 +29,18 @@ try {
 }
 
 const cards = [
-  { href: "/admin", title: "管理员后台", desc: "文章管理 · 新建 / 编辑 / 删除", count: `${postCount} 篇文章` },
-  { href: "/admin/users", title: "用户与角色", desc: "分配作者 / 督查 / 管理员 / 超级管理员", count: `${Object.values(roleCounts).reduce((a, b) => a + b, 0)} 个用户` },
-  { href: "/author/dashboard", title: "作者后台", desc: "以作者视角查看内容", count: `作者 ${roleCounts["author"] ?? 0} 人` },
-  { href: "/inspector/dashboard", title: "督查后台", desc: "以督查视角巡查审核", count: `${commentCount} 条评论` },
+  { href: "/admin", title: _("admin.title"), desc: _("super.descAdmin"), count: _("super.postsCount", { n: postCount }) },
+  { href: "/admin/users", title: _("users.title"), desc: _("users.subtitle"), count: _("super.usersCount", { n: Object.values(roleCounts).reduce((a, b) => a + b, 0) }) },
+  { href: "/author/dashboard", title: _("author.title"), desc: _("super.descAuthor"), count: _("super.authorsCount", { n: roleCounts["author"] ?? 0 }) },
+  { href: "/inspector/dashboard", title: _("inspector.title"), desc: _("super.descInspector"), count: _("super.commentsCount", { n: commentCount }) },
 ];
 ---
 
-<BaseLayout title="超级后台 — Mizuki">
+<BaseLayout title={`${_("super.pageTitle")} — Mizuki`} lang={lang}>
   <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
     <div class="mb-6">
-      <h1 class="text-2xl font-bold">超级后台</h1>
-      <p class="text-sm opacity-60 mt-1">欢迎，{me?.name || me?.email} · 拥有全部后台访问权限</p>
+      <h1 class="text-2xl font-bold">{_("super.title")}</h1>
+      <p class="text-sm opacity-60 mt-1">{_("super.subtitle", { name: me?.name || me?.email || "" })}</p>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -50,16 +54,16 @@ const cards = [
     </div>
 
     <div class="card-base enable-card-border p-5 mt-4" style="border-radius: var(--radius-large);">
-      <div class="text-sm font-semibold mb-3">角色分布</div>
+      <div class="text-sm font-semibold mb-3">{_("super.roleDist")}</div>
       <div class="flex flex-wrap gap-2 text-xs">
         {Object.entries(roleCounts).map(([role, n]) => (
-          <span class="inline-flex px-3 py-1 rounded-full font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{role} × {n}</span>
+          <span class="inline-flex px-3 py-1 rounded-full font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{_(`role.${role}`)} × {n}</span>
         ))}
       </div>
     </div>
 
     <div class="mt-6">
-      <a href="/" class="btn-plain px-4 py-2 text-sm">← 返回首页</a>
+      <a href="/" class="btn-plain px-4 py-2 text-sm">{_("super.backHome")}</a>
     </div>
   </div>
 </BaseLayout>

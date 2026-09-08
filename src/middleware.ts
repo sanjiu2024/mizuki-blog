@@ -40,7 +40,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
       return context.redirect("/login", 302);
     }
     if (!canAccess(user.role, url.pathname)) {
-      return new Response("Forbidden — insufficient role", { status: 403 });
+      return new Response("权限不足，无法访问", { status: 403 });
     }
   }
 

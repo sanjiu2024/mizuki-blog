@@ -2,6 +2,10 @@
 export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { db } from "../../db/client";
+import { getLangFromUrl, createTranslator } from "../../i18n";
+
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
 
 const me = Astro.locals.user;
 
@@ -27,50 +31,50 @@ try {
 }
 ---
 
-<BaseLayout title="督查后台 — Mizuki">
+<BaseLayout title={`${_("inspector.pageTitle")} — Mizuki`} lang={lang}>
   <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
     <div class="mb-6">
-      <h1 class="text-2xl font-bold">督查后台</h1>
-      <p class="text-sm opacity-60 mt-1">欢迎，{me?.name || me?.email} · 负责内容审核与巡查</p>
+      <h1 class="text-2xl font-bold">{_("inspector.title")}</h1>
+      <p class="text-sm opacity-60 mt-1">{_("inspector.subtitle", { name: me?.name || me?.email || "" })}</p>
     </div>
 
     <div class="grid grid-cols-3 gap-4 mb-6">
       <div class="card-base enable-card-border p-4 text-center" style="border-radius: var(--radius-large);">
         <div class="text-2xl font-bold" style="color: var(--primary);">{pending}</div>
-        <div class="text-xs opacity-60 mt-1">待审核评论</div>
+        <div class="text-xs opacity-60 mt-1">{_("inspector.pending")}</div>
       </div>
       <div class="card-base enable-card-border p-4 text-center" style="border-radius: var(--radius-large);">
         <div class="text-2xl font-bold">{totalComments}</div>
-        <div class="text-xs opacity-60 mt-1">评论总数</div>
+        <div class="text-xs opacity-60 mt-1">{_("inspector.totalComments")}</div>
       </div>
       <div class="card-base enable-card-border p-4 text-center" style="border-radius: var(--radius-large);">
         <div class="text-2xl font-bold">{totalPosts}</div>
-        <div class="text-xs opacity-60 mt-1">文章总数</div>
+        <div class="text-xs opacity-60 mt-1">{_("inspector.totalPosts")}</div>
       </div>
     </div>
 
     <div class="card-base enable-card-border overflow-hidden" style="border-radius: var(--radius-large);">
-      <div class="px-4 py-3 text-sm font-semibold border-b" style="border-color: var(--line-divider);">最新评论（50）</div>
+      <div class="px-4 py-3 text-sm font-semibold border-b" style="border-color: var(--line-divider);">{_("inspector.latest")}</div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="text-xs opacity-60 border-b" style="border-color: var(--line-divider);">
             <tr>
-              <th class="text-left px-4 py-3 font-medium">内容</th>
-              <th class="text-left px-4 py-3 font-medium hidden sm:table-cell">文章</th>
-              <th class="text-left px-4 py-3 font-medium hidden md:table-cell">作者</th>
-              <th class="text-left px-4 py-3 font-medium">状态</th>
+              <th class="text-left px-4 py-3 font-medium">{_("inspector.thContent")}</th>
+              <th class="text-left px-4 py-3 font-medium hidden sm:table-cell">{_("inspector.thPost")}</th>
+              <th class="text-left px-4 py-3 font-medium hidden md:table-cell">{_("inspector.thAuthor")}</th>
+              <th class="text-left px-4 py-3 font-medium">{_("inspector.thStatus")}</th>
             </tr>
           </thead>
           <tbody>
             {recent.length === 0 ? (
-              <tr><td colspan="4" class="text-center py-12 opacity-50">暂无评论</td></tr>
+              <tr><td colspan="4" class="text-center py-12 opacity-50">{_("inspector.empty")}</td></tr>
             ) : recent.map((c) => (
               <tr class="border-b last:border-0" style="border-color: var(--line-divider);">
                 <td class="px-4 py-3 max-w-[18rem] truncate">{c.content}</td>
                 <td class="px-4 py-3 opacity-60 hidden sm:table-cell max-w-[10rem] truncate">{c.post_title ?? "-"}</td>
                 <td class="px-4 py-3 opacity-60 hidden md:table-cell">{c.author_name ?? "-"}</td>
                 <td class="px-4 py-3">
-                  <span class={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${c.status === "approved" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>{c.status}</span>
+                  <span class={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${c.status === "approved" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>{_(c.status === "approved" ? "status.approved" : "status.pending")}</span>
                 </td>
               </tr>
             ))}
@@ -79,7 +83,7 @@ try {
       </div>
     </div>
     <div class="mt-6">
-      <a href="/" class="btn-plain px-4 py-2 text-sm">← 返回首页</a>
+      <a href="/" class="btn-plain px-4 py-2 text-sm">{_("inspector.backHome")}</a>
     </div>
   </div>
 </BaseLayout>

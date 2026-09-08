@@ -3,6 +3,10 @@ export const prerender = false;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { seedData } from "../../db/seed";
 import { db } from "../../db/client";
+import { getLangFromUrl, createTranslator } from "../../i18n";
+
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
 
 const { tag } = Astro.params;
 if (!tag) return Astro.redirect("/tags");
@@ -64,14 +68,14 @@ try {
 const totalPages = Math.max(1, Math.ceil(total / limit));
 ---
 
-<BaseLayout title={tagRow ? `#${tagRow.name} — Mizuki Blog` : "Tag not found"} description={tagRow ? `Posts tagged ${tagRow.name}` : "Tag not found"}>
+<BaseLayout title={tagRow ? `#${tagRow.name} — Mizuki` : `${_("tags.notFound")} — Mizuki`} description={tagRow ? _("tags.pageDesc") : _("tags.notFoundDesc")} lang={lang}>
   <section class="py-8">
     {tagRow ? (
       <>
         <h1 class="text-2xl font-bold mb-2">#{tagRow.name}</h1>
-        <p class="text-sm opacity-60 mb-6">{total} post{total !== 1 ? "s" : ""} · page {page}/{totalPages}</p>
+        <p class="text-sm opacity-60 mb-6">{_("tags.postsCount", { total, page, totalPages })}</p>
         {posts.length === 0 ? (
-          <p class="opacity-60">No posts for this tag yet.</p>
+          <p class="opacity-60">{_("tags.noPosts")}</p>
         ) : (
           <ul class="grid gap-4">
             {posts.map((p) => (
@@ -85,17 +89,17 @@ const totalPages = Math.max(1, Math.ceil(total / limit));
         )}
         {totalPages > 1 && (
           <nav class="mt-6 flex items-center gap-2 text-sm">
-            {page > 1 && <a href={`/tags/${tag}?page=${page-1}&limit=${limit}`} class="btn-regular px-3 py-1.5">← Prev</a>}
-            <span class="opacity-60">Page {page} / {totalPages}</span>
-            {page < totalPages && <a href={`/tags/${tag}?page=${page+1}&limit=${limit}`} class="btn-regular px-3 py-1.5">Next →</a>}
+            {page > 1 && <a href={`/tags/${tag}?page=${page-1}&limit=${limit}`} class="btn-regular px-3 py-1.5">{_("pagination.prev")}</a>}
+            <span class="opacity-60">{_("tags.page", { page, totalPages })}</span>
+            {page < totalPages && <a href={`/tags/${tag}?page=${page+1}&limit=${limit}`} class="btn-regular px-3 py-1.5">{_("pagination.next")}</a>}
           </nav>
         )}
       </>
     ) : (
       <>
-        <h1 class="text-2xl font-bold mb-4">Tag not found</h1>
-        <p class="opacity-60">No tag named "{tag}" exists.</p>
-        <a href="/tags" class="mt-4 inline-block text-sm underline">Browse all tags</a>
+        <h1 class="text-2xl font-bold mb-4">{_("tags.notFound")}</h1>
+        <p class="opacity-60">{_("tags.notFoundName", { tag: tag ?? "" })}</p>
+        <a href="/tags" class="mt-4 inline-block text-sm underline">{_("tags.browseAll")}</a>
       </>
     )}
   </section>

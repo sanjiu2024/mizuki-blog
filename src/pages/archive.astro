@@ -3,6 +3,10 @@ export const prerender = false;
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { seedData } from "../db/seed";
 import { db } from "../db/client";
+import { getLangFromUrl, createTranslator } from "../i18n";
+
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
 
 let groups: Array<{ ym: string; cnt: number }> = [];
 let posts: Array<{ id: string; slug: string; title: string; excerpt: string | null; published_at: number; ym: string }> = [];
@@ -58,11 +62,11 @@ for (const p of posts) {
 }
 ---
 
-<BaseLayout title="Archive — Mizuki Blog" description="Post archive by month">
+<BaseLayout title={`${_("archive.pageTitle")} — Mizuki`} description={_("archive.pageDesc")} lang={lang}>
   <section class="py-8">
-    <h1 class="text-2xl font-bold mb-6">Archive</h1>
+    <h1 class="text-2xl font-bold mb-6">{_("archive.title")}</h1>
     {groups.length === 0 ? (
-      <p class="opacity-60">No posts yet.</p>
+      <p class="opacity-60">{_("archive.empty")}</p>
     ) : (
       <div class="relative">
         <!-- timeline line -->

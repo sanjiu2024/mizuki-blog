@@ -10,14 +10,16 @@ export const prerender = false;
 const { slug } = Astro.params;
 const slugStr = Array.isArray(slug) ? slug.join("/") : slug ?? "";
 
-type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; publishedAt?: number | null; createdAt: number; tags?: string[] };
+type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; cover: string | null; category: string | null; status: string; publishedAt?: number | null; createdAt: number; tags?: string[] };
 
 let post: PostRow | null = null;
+const isPreview = Astro.url.searchParams.get("preview") === "1";
 
 try {
   if (slugStr) {
     const row = await db.query.posts.findFirst({
-      where: (p, { eq, and }) => and(eq(p.slug, slugStr), eq(p.status, "published")),
+      where: (p, { eq, and }) =>
+        isPreview ? eq(p.slug, slugStr) : and(eq(p.slug, slugStr), eq(p.status, "published")),
     });
     if (row) {
       const tagRows = await db
@@ -25,12 +27,16 @@ try {
         .from(tagsTable)
         .innerJoin(postTags, eq(postTags.tagId, tagsTable.id))
         .where(eq(postTags.postId, row.id));
+      const r = row as unknown as Record<string, unknown>;
       post = {
         id: row.id,
         slug: row.slug,
         title: row.title,
         excerpt: row.excerpt,
         content: row.content,
+        cover: (r.cover as string | null) ?? null,
+        category: (r.category as string | null) ?? "未分类",
+        status: (r.status as string) ?? "published",
         publishedAt: row.publishedAt,
         createdAt: row.createdAt,
         tags: tagRows.map((x) => x.slug),
@@ -43,12 +49,16 @@ try {
   // fallback mock
   const found = seedData.posts.find((p) => p.slug === slugStr);
   if (found) {
+    const f = found as unknown as Record<string, unknown>;
     post = {
       id: found.id,
       slug: found.slug,
       title: found.title,
       excerpt: found.excerpt,
       content: found.content,
+      cover: (f.cover as string | null) ?? null,
+      category: (f.category as string | null) ?? "未分类",
+      status: found.status,
       publishedAt: found.publishedAt,
       createdAt: found.createdAt,
       tags: seedData.postTags.filter((pt) => pt.postId === found.id).map((pt) => seedData.tags.find((t) => t.id === pt.tagId)?.slug ?? "").filter(Boolean),
@@ -90,7 +100,9 @@ function markdownToHtml(md: string): string {
 }
 
 const contentHtml = post ? markdownToHtml(post.content) : "";
-const dateLabel = post ? new Date((post.publishedAt ?? post.createdAt) as number).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "";
+const dateSource = post ? ((post.publishedAt ?? post.createdAt) as number) : 0;
+const dateLabel = post ? new Date(dateSource).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }) : "";
+const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
 ---
 
 <BaseLayout title={post ? `${post.title} — Mizuki` : "Not found — Mizuki"} description={post?.excerpt ?? "Post not found"}>
@@ -98,13 +110,22 @@ const dateLabel = post ? new Date((post.publishedAt ?? post.createdAt) as number
     {post ? (
       <article class="card-base enable-card-border p-6 sm:p-8 lg:p-10 onload-animation" style="border-radius: var(--radius-large);">
         <a href="/" class="inline-flex items-center gap-1 text-sm mb-4 btn-plain px-2 py-1 -ml-2">← Back to home</a>
+        {isPreview && post.status !== "published" && (
+          <p class="mb-4 inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">草稿预览 · 仅持有链接者可见</p>
+        )}
 
+        {post.cover && (
+          <img src={post.cover} alt={post.title} loading="lazy" class="w-full max-h-80 object-cover rounded-2xl border mb-6" style="border-color: var(--line-divider);" />
+        )}
         <header class="mb-6">
           <h1 class="text-2xl sm:text-3xl lg:text-4xl font-black leading-tight tracking-tight" style="color: oklch(0.2 0.02 var(--hue));">
             {post.title}
           </h1>
           <div class="mt-3 flex flex-wrap items-center gap-3 text-sm" style="color: oklch(0.5 0.02 var(--hue));">
-            <time>{dateLabel}</time>
+            <time datetime={new Date(dateSource).toISOString()} title={dateTimeLabel}>{dateLabel}</time>
+            {post.category && (
+              <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" style="background: var(--primary); color: white;">{post.category}</span>
+            )}
             {post.tags && post.tags.length > 0 && (
               <span class="flex gap-1.5 flex-wrap">
                 {post.tags.map((t) => (

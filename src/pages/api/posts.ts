@@ -2,11 +2,13 @@ import type { APIRoute } from "astro";
 import { seedData } from "../../db/seed";
 import { db } from "../../db/client";
 import { auth } from "../../auth";
+import { POST_CATEGORIES } from "../../db/schema";
 import { nanoid } from "nanoid";
 
 export const prerender = false;
 
 const SLUG_RE = /^[a-z0-9-]+$/;
+const COVER_RE = /^(https?:\/\/|\/)[^\s]{1,500}$/;
 
 async function first(sqlText: string, args: unknown[]): Promise<any> {
   const rs = await db.$client.execute({ sql: sqlText, args: args as any[] });
@@ -45,40 +47,111 @@ async function getSessionUser(request: Request) {
   }
 }
 
-async function requireAdmin(request: Request) {
-  const user = await getSessionUser(request);
+type SessionUser = { id: string; role: string; [key: string]: unknown };
+
+async function requireWriter(request: Request) {
+  const user = (await getSessionUser(request)) as SessionUser | null;
   if (!user) {
     return {
       user: null,
-      error: new Response(JSON.stringify({ error: "Unauthorized" }), {
+      error: new Response(JSON.stringify({ error: "未登录，请先登录" }), {
         status: 401,
         headers: { "content-type": "application/json" },
       }),
     };
   }
-  if (!["admin", "super_admin"].includes(user.role)) {
+  if (!["author", "admin", "super_admin"].includes(user.role)) {
     return {
       user: null,
-      error: new Response(JSON.stringify({ error: "Forbidden" }), {
+      error: new Response(JSON.stringify({ error: "无权限访问" }), {
         status: 403,
         headers: { "content-type": "application/json" },
       }),
     };
   }
-  return { user, error: null as any };
+  return { user, error: null as unknown as Response };
+}
+
+function isPrivileged(role: string): boolean {
+  return role === "admin" || role === "super_admin";
+}
+
+function ownershipError() {
+  return new Response(
+    JSON.stringify({ error: "无权操作他人的文章" }),
+    { status: 403, headers: { "content-type": "application/json" } },
+  );
 }
 
 function validateBody(body: any) {
   const errors: string[] = [];
   if (!body.title || typeof body.title !== "string" || !body.title.trim())
-    errors.push("title required");
+    errors.push("请填写标题");
   if (!body.content || typeof body.content !== "string" || !body.content.trim())
-    errors.push("content required");
+    errors.push("请填写正文");
   if (!body.slug || typeof body.slug !== "string" || !SLUG_RE.test(body.slug))
-    errors.push("slug must match ^[a-z0-9-]+$");
+    errors.push("Slug 格式不正确，仅允许小写字母、数字和连字符");
   if (body.status && !["published", "draft"].includes(body.status))
-    errors.push("status must be published or draft");
+    errors.push("状态只能是“已发布”或“草稿”");
+  if (
+    body.cover !== undefined &&
+    body.cover !== null &&
+    String(body.cover).trim() !== "" &&
+    !COVER_RE.test(String(body.cover).trim())
+  )
+    errors.push("封面必须是 http(s) URL 或 / 开头的站内路径");
+  if (
+    body.category !== undefined &&
+    body.category !== null &&
+    String(body.category).trim() !== "" &&
+    !(POST_CATEGORIES as readonly string[]).includes(String(body.category).trim())
+  )
+    errors.push(`分类只能是 ${POST_CATEGORIES.join(" / ")}`);
   return errors;
+}
+
+function normalizeCover(input: unknown): string | null {
+  if (input === undefined || input === null) return null;
+  const s = String(input).trim();
+  return s === "" ? null : s;
+}
+
+function normalizeCategory(input: unknown): string {
+  const s = String(input ?? "未分类").trim();
+  if ((POST_CATEGORIES as readonly string[]).includes(s)) return s;
+  return "未分类";
+}
+
+// ── tolerant column detection (DB may not be migrated yet) ──
+let postColsCache: Set<string> | null = null;
+async function postColumns(): Promise<Set<string>> {
+  if (postColsCache) return postColsCache;
+  try {
+    const rs = await db.$client.execute({
+      sql: "PRAGMA table_info(posts)",
+      args: [],
+    });
+    const cols = new Set<string>();
+    for (const r of rs.rows as unknown as Array<Record<string, unknown>>) {
+      const name = String(r.name ?? "");
+      if (name) cols.add(name);
+    }
+    postColsCache = cols;
+    return cols;
+  } catch {
+    return new Set<string>([
+      "id",
+      "slug",
+      "title",
+      "excerpt",
+      "content",
+      "status",
+      "author_id",
+      "published_at",
+      "created_at",
+      "updated_at",
+    ]);
+  }
 }
 
 function parseTags(input: any): string[] {
@@ -143,12 +216,49 @@ async function syncPostTags(postId: string, tags: string[]) {
 }
 
 // ── GET (保留) ──
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ url, request }) => {
   const limit = Math.min(
     parseInt(url.searchParams.get("limit") || "20", 10) || 20,
     50,
   );
   const offset = parseInt(url.searchParams.get("offset") || "0", 10) || 0;
+  const mine = url.searchParams.get("mine") === "1";
+
+  // author (and admin) can list own posts via ?mine=1
+  if (mine) {
+    const gate = await requireWriter(request);
+    if (gate.error) return gate.error;
+    const user = gate.user as SessionUser;
+    const cols = await postColumns();
+    const extra = [
+      cols.has("cover") ? "cover," : "",
+      cols.has("category") ? "category," : "",
+    ].join(" ");
+    const minePosts: unknown[] = await all(
+      `SELECT id, slug, title, excerpt, content, ${extra} status, published_at as publishedAt, created_at as createdAt FROM posts WHERE author_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [user.id, limit, offset],
+    );
+    const cnt = await first(
+      "SELECT COUNT(*) as cnt FROM posts WHERE author_id=?",
+      [user.id],
+    );
+    const totalMine = Number(
+      (cnt as { cnt: number | string } | null)?.cnt ?? minePosts.length,
+    );
+    return new Response(
+      JSON.stringify(
+        { posts: minePosts, total: totalMine, limit, offset },
+        null,
+        2,
+      ),
+      {
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      },
+    );
+  }
 
   let posts: any[] = [];
   let total = 0;
@@ -159,8 +269,13 @@ export const GET: APIRoute = async ({ url }) => {
       [],
     );
     total = Number(cnt?.cnt ?? 0);
+    const cols = await postColumns();
+    const extra = [
+      cols.has("cover") ? "cover," : "",
+      cols.has("category") ? "category," : "",
+    ].join(" ");
     posts = await all(
-      "SELECT id, slug, title, excerpt, content, status, published_at as publishedAt, created_at as createdAt FROM posts WHERE status='published' ORDER BY published_at DESC, created_at DESC LIMIT ? OFFSET ?",
+      `SELECT id, slug, title, excerpt, content, ${extra} status, published_at as publishedAt, created_at as createdAt FROM posts WHERE status='published' ORDER BY published_at DESC, created_at DESC LIMIT ? OFFSET ?`,
       [limit, offset],
     );
     total = total || posts.length;
@@ -192,15 +307,15 @@ export const GET: APIRoute = async ({ url }) => {
 
 // ── POST ──
 export const POST: APIRoute = async ({ request }) => {
-  const gate = await requireAdmin(request);
+  const gate = await requireWriter(request);
   if (gate.error) return gate.error;
-  const { user } = gate;
+  const user = gate.user as SessionUser;
 
   let body: any;
   try {
     body = await request.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+    return new Response(JSON.stringify({ error: "请求格式错误" }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
@@ -217,22 +332,42 @@ export const POST: APIRoute = async ({ request }) => {
   const id = nanoid(12);
   const now = Date.now();
   const publishedAt = body.status === "draft" ? null : now;
+  const cover = normalizeCover(body.cover);
+  const category = normalizeCategory(body.category);
 
   try {
+    const cols = await postColumns();
+    const columns = [
+      "id",
+      "slug",
+      "title",
+      "excerpt",
+      "content",
+      ...(cols.has("cover") ? ["cover"] : []),
+      ...(cols.has("category") ? ["category"] : []),
+      "status",
+      "author_id",
+      "published_at",
+      "created_at",
+      "updated_at",
+    ];
+    const values: unknown[] = [
+      id,
+      body.slug,
+      body.title.trim(),
+      body.excerpt ?? null,
+      body.content,
+      ...(cols.has("cover") ? [cover] : []),
+      ...(cols.has("category") ? [category] : []),
+      body.status ?? "published",
+      user.id,
+      publishedAt,
+      now,
+      now,
+    ];
     await run(
-      "INSERT INTO posts (id, slug, title, excerpt, content, status, author_id, published_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-      [
-        id,
-        body.slug,
-        body.title.trim(),
-        body.excerpt ?? null,
-        body.content,
-        body.status ?? "published",
-        user.id,
-        publishedAt,
-        now,
-        now,
-      ],
+      `INSERT INTO posts (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(",")})`,
+      values,
     );
 
     if (tags.length) await syncPostTags(id, tags);
@@ -244,7 +379,7 @@ export const POST: APIRoute = async ({ request }) => {
   } catch (e: any) {
     const msg = String(e?.message ?? e);
     if (msg.includes("UNIQUE") && msg.includes("slug")) {
-      return new Response(JSON.stringify({ error: "slug already exists" }), {
+      return new Response(JSON.stringify({ error: "该 Slug 已存在，请换一个" }), {
         status: 409,
         headers: { "content-type": "application/json" },
       });
@@ -258,14 +393,15 @@ export const POST: APIRoute = async ({ request }) => {
 
 // ── PATCH ──
 export const PATCH: APIRoute = async ({ request, url }) => {
-  const gate = await requireAdmin(request);
+  const gate = await requireWriter(request);
   if (gate.error) return gate.error;
+  const user = gate.user as SessionUser;
 
   let body: any;
   try {
     body = await request.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+    return new Response(JSON.stringify({ error: "请求格式错误" }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
@@ -273,27 +409,31 @@ export const PATCH: APIRoute = async ({ request, url }) => {
   // id can come from body.id or query ?id=
   const id = body.id ?? url.searchParams.get("id");
   if (!id)
-    return new Response(JSON.stringify({ error: "id required" }), {
+    return new Response(JSON.stringify({ error: "缺少 id 参数" }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
 
   // fetch existing to validate
-  const existing = await first("SELECT id FROM posts WHERE id=?", [id]);
+  const existing = (await first("SELECT id, author_id FROM posts WHERE id=?", [
+    id,
+  ])) as { id: string; author_id: string } | null;
   if (!existing)
-    return new Response(JSON.stringify({ error: "post not found" }), {
+    return new Response(JSON.stringify({ error: "文章不存在" }), {
       status: 404,
       headers: { "content-type": "application/json" },
     });
+  if (!isPrivileged(user.role) && existing.author_id !== user.id)
+    return ownershipError();
 
   // validate if fields present
   if (body.slug && !SLUG_RE.test(body.slug))
     return new Response(
-      JSON.stringify({ error: "slug must match ^[a-z0-9-]+$" }),
+      JSON.stringify({ error: "Slug 格式不正确，仅允许小写字母、数字和连字符" }),
       { status: 400, headers: { "content-type": "application/json" } },
     );
   if (body.title !== undefined && (!body.title || !String(body.title).trim()))
-    return new Response(JSON.stringify({ error: "title required" }), {
+    return new Response(JSON.stringify({ error: "请填写标题" }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
@@ -301,7 +441,7 @@ export const PATCH: APIRoute = async ({ request, url }) => {
     body.content !== undefined &&
     (!body.content || !String(body.content).trim())
   )
-    return new Response(JSON.stringify({ error: "content required" }), {
+    return new Response(JSON.stringify({ error: "请填写正文" }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
@@ -321,6 +461,20 @@ export const PATCH: APIRoute = async ({ request, url }) => {
     fields.push("excerpt=?");
     values.push(body.excerpt ?? null);
   }
+  if (body.cover !== undefined) {
+    const cols = await postColumns();
+    if (cols.has("cover")) {
+      fields.push("cover=?");
+      values.push(normalizeCover(body.cover));
+    }
+  }
+  if (body.category !== undefined) {
+    const cols = await postColumns();
+    if (cols.has("category")) {
+      fields.push("category=?");
+      values.push(normalizeCategory(body.category));
+    }
+  }
   if (body.content !== undefined) {
     fields.push("content=?");
     values.push(body.content);
@@ -328,7 +482,7 @@ export const PATCH: APIRoute = async ({ request, url }) => {
   if (body.status !== undefined) {
     if (!["published", "draft"].includes(body.status))
       return new Response(
-        JSON.stringify({ error: "status must be published or draft" }),
+        JSON.stringify({ error: "状态只能是“已发布”或“草稿”" }),
         { status: 400, headers: { "content-type": "application/json" } },
       );
     fields.push("status=?");
@@ -363,7 +517,7 @@ export const PATCH: APIRoute = async ({ request, url }) => {
   } catch (e: any) {
     const msg = String(e?.message ?? e);
     if (msg.includes("UNIQUE") && msg.includes("slug")) {
-      return new Response(JSON.stringify({ error: "slug already exists" }), {
+      return new Response(JSON.stringify({ error: "该 Slug 已存在，请换一个" }), {
         status: 409,
         headers: { "content-type": "application/json" },
       });
@@ -377,8 +531,9 @@ export const PATCH: APIRoute = async ({ request, url }) => {
 
 // ── DELETE ──
 export const DELETE: APIRoute = async ({ request, url }) => {
-  const gate = await requireAdmin(request);
+  const gate = await requireWriter(request);
   if (gate.error) return gate.error;
+  const user = gate.user as SessionUser;
 
   let id: string | null = url.searchParams.get("id");
   if (!id) {
@@ -388,17 +543,21 @@ export const DELETE: APIRoute = async ({ request, url }) => {
     } catch {}
   }
   if (!id)
-    return new Response(JSON.stringify({ error: "id required" }), {
+    return new Response(JSON.stringify({ error: "缺少 id 参数" }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
 
-  const existing = await first("SELECT id FROM posts WHERE id=?", [id]);
+  const existing = (await first("SELECT id, author_id FROM posts WHERE id=?", [
+    id,
+  ])) as { id: string; author_id: string } | null;
   if (!existing)
-    return new Response(JSON.stringify({ error: "post not found" }), {
+    return new Response(JSON.stringify({ error: "文章不存在" }), {
       status: 404,
       headers: { "content-type": "application/json" },
     });
+  if (!isPrivileged(user.role) && existing.author_id !== user.id)
+    return ownershipError();
 
   // cascade will delete post_tags via FK, but ensure
   await run("DELETE FROM post_tags WHERE post_id=?", [id]);

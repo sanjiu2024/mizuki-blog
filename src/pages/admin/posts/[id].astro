@@ -2,6 +2,11 @@
 export const prerender = false;
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import { db } from "../../../db/client";
+import { getLangFromUrl, createTranslator } from "../../../i18n";
+import { POST_CATEGORIES } from "../../../db/schema";
+
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
 
 const { id } = Astro.params;
 
@@ -10,13 +15,21 @@ let tagsStr = "";
 
 try {
   if (id) {
-    const rs = await db.$client.execute({
-      sql: "SELECT id, slug, title, excerpt, content, status FROM posts WHERE id=?",
-      args: [id],
-    });
+    let rs;
+    try {
+      rs = await db.$client.execute({
+        sql: "SELECT id, slug, title, excerpt, content, cover, category, status FROM posts WHERE id=?",
+        args: [id],
+      });
+    } catch {
+      rs = await db.$client.execute({
+        sql: "SELECT id, slug, title, excerpt, content, status FROM posts WHERE id=?",
+        args: [id],
+      });
+    }
     const p = (rs.rows?.[0] ?? null) as any;
     if (p) {
-      post = p;
+      post = { cover: null, category: "未分类", ...p };
       const tagRs = await db.$client.execute({
         sql: "SELECT t.name FROM tags t JOIN post_tags pt ON pt.tag_id=t.id WHERE pt.post_id=?",
         args: [id],
@@ -32,67 +45,112 @@ if (!post) {
 }
 ---
 
-<BaseLayout title={post ? `编辑 ${post.title} — 后台` : "未找到 — 后台"}>
+<BaseLayout title={post ? `${_("admin.editTitle")}：${post.title} — Mizuki` : `${_("admin.notFoundTitle")} — Mizuki`} lang={lang}>
   <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
     {post ? (
       <>
-        <h1 class="text-2xl font-bold mb-6">编辑文章</h1>
+        <div class="flex items-center justify-between mb-6">
+          <h1 class="text-2xl font-bold">{_("admin.editTitle")}</h1>
+          <a href={`/posts/${post.slug}?preview=1`} target="_blank" class="btn-plain px-4 py-2 text-sm rounded-lg border" style="border-color: var(--line-divider);">{_("admin.preview")}</a>
+        </div>
         <form id="edit-form" class="card-base enable-card-border p-6 space-y-5" style="border-radius: var(--radius-large);">
           <input type="hidden" name="id" value={post.id} />
           <div>
-            <label class="text-sm font-medium">标题 *</label>
+            <label class="text-sm font-medium">{_("form.title")} *</label>
             <input name="title" required value={post.title} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
           </div>
           <div>
-            <label class="text-sm font-medium">Slug *</label>
+            <label class="text-sm font-medium">{_("form.slug")} * <span class="opacity-50 font-normal">{_("form.slugHint")}</span></label>
             <input name="slug" required pattern="^[a-z0-9-]+$" value={post.slug} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
           </div>
-          <div>
-            <label class="text-sm font-medium">摘要</label>
-            <textarea name="excerpt" rows="2" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">{post.excerpt ?? ""}</textarea>
+          <div class="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label class="text-sm font-medium">{_("form.cover")} <span class="opacity-50 font-normal">{_("form.coverHint")}</span></label>
+              <input name="cover" type="url" value={post.cover ?? ""} placeholder={_("form.coverPlaceholder")} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+              <div id="cover-preview-wrap" class={post.cover ? "mt-2" : "hidden mt-2"}>
+                <p class="text-xs opacity-60 mb-1">{_("admin.coverPreview")}</p>
+                <img id="cover-preview" src={post.cover ?? ""} alt="" class="w-full max-h-44 object-cover rounded-lg border" style="border-color: var(--line-divider);" />
+              </div>
+            </div>
+            <div>
+              <label class="text-sm font-medium">{_("form.category")}</label>
+              <select name="category" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">
+                {POST_CATEGORIES.map((c) => (
+                  <option value={c} selected={(post.category ?? "未分类") === c}>{c}</option>
+                ))}
+              </select>
+              <div class="mt-4">
+                <label class="text-sm font-medium">{_("form.status")}</label>
+                <div class="mt-1 flex gap-4 text-sm">
+                  <label class="inline-flex items-center gap-1.5"><input type="radio" name="status" value="published" checked={post.status === "published"} />{_("status.published")}</label>
+                  <label class="inline-flex items-center gap-1.5"><input type="radio" name="status" value="draft" checked={post.status === "draft"} />{_("status.draft")}</label>
+                </div>
+                <p class="text-xs opacity-50 mt-1">{_("form.saveDraftHint")}</p>
+              </div>
+            </div>
           </div>
           <div>
-            <label class="text-sm font-medium">正文 *</label>
+            <label class="text-sm font-medium">{_("form.excerpt")} <span class="opacity-50 font-normal">{_("form.excerptHint")}</span></label>
+            <textarea name="excerpt" rows="2" maxlength="300" placeholder={_("form.excerptPlaceholder")} class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">{post.excerpt ?? ""}</textarea>
+            <p class="text-xs opacity-50 mt-1"><span id="excerpt-count">{(post.excerpt ?? "").length}</span> / 300</p>
+          </div>
+          <div>
+            <label class="text-sm font-medium">{_("form.content")} *</label>
             <textarea name="content" required rows="12" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" style="background: var(--card-bg); border-color: var(--line-divider);">{post.content}</textarea>
           </div>
           <div>
-            <label class="text-sm font-medium">标签（逗号分隔）</label>
+            <label class="text-sm font-medium">{_("form.tags")}（{_("form.tagsHint")}）</label>
             <input name="tags" value={tagsStr} placeholder="astro, mizuki" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
-          </div>
-          <div>
-            <label class="text-sm font-medium">状态</label>
-            <select name="status" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);">
-              <option value="published" selected={post.status==='published'}>published</option>
-              <option value="draft" selected={post.status==='draft'}>draft</option>
-            </select>
           </div>
           <p id="form-msg" class="text-sm hidden"></p>
           <div class="flex gap-3">
-            <button type="submit" class="btn-regular px-6 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">保存</button>
-            <a href="/admin" class="btn-plain px-6 py-2 text-sm rounded-lg">返回</a>
+            <button type="submit" class="btn-regular px-6 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">{_("common.save")}</button>
+            <a href="/admin" class="btn-plain px-6 py-2 text-sm rounded-lg">{_("admin.back")}</a>
           </div>
         </form>
-        <script is:inline define:vars={{ postId: post.id }}>
+        <script is:inline define:vars={{ postId: post.id, saving: _("admin.saving"), saveSuccess: _("admin.saveSuccess"), saveFail: _("admin.saveFail"), coverInvalid: _("admin.coverInvalid") }}>
           const form = document.getElementById('edit-form');
           const msg = document.getElementById('form-msg');
+          const coverEl = form?.querySelector('input[name="cover"]');
+          const previewWrap = document.getElementById('cover-preview-wrap');
+          const previewImg = document.getElementById('cover-preview');
+          const excerptEl = form?.querySelector('textarea[name="excerpt"]');
+          const excerptCount = document.getElementById('excerpt-count');
+          excerptEl?.addEventListener('input', () => { if (excerptCount) excerptCount.textContent = String(excerptEl.value.length); });
+          coverEl?.addEventListener('input', () => {
+            const v = coverEl.value.trim();
+            if (v && /^(https?:\/\/|\/)[^\s]{1,500}$/.test(v)) {
+              previewImg.src = v;
+              previewWrap?.classList.remove('hidden');
+            } else {
+              previewWrap?.classList.add('hidden');
+            }
+          });
           form?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const fd = new FormData(form);
+            const cover = String(fd.get('cover')||'').trim() || null;
+            if (cover && !/^(https?:\/\/|\/)[^\s]{1,500}$/.test(cover)) {
+              if (msg) { msg.textContent = coverInvalid; msg.className = 'text-sm text-red-500'; msg.classList.remove('hidden'); }
+              return;
+            }
             const body = {
               id: postId,
               title: String(fd.get('title')||'').trim(),
               slug: String(fd.get('slug')||'').trim(),
+              cover,
+              category: String(fd.get('category')||'未分类'),
               excerpt: String(fd.get('excerpt')||'').trim(),
               content: String(fd.get('content')||'').trim(),
               tags: String(fd.get('tags')||'').trim(),
               status: String(fd.get('status')||'published'),
             };
-            if (msg) { msg.textContent='保存中...'; msg.className='text-sm'; msg.classList.remove('hidden'); }
+            if (msg) { msg.textContent=saving; msg.className='text-sm'; msg.classList.remove('hidden'); }
             try {
               const res = await fetch('/api/posts', { method: 'PATCH', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body)});
               const data = await res.json().catch(()=>({}));
-              if (!res.ok) throw new Error(data.error||'保存失败');
-              if (msg) { msg.textContent='保存成功，跳转中...'; msg.className='text-sm text-green-600'; }
+              if (!res.ok) throw new Error(data.error||saveFail);
+              if (msg) { msg.textContent=saveSuccess; msg.className='text-sm text-green-600'; }
               location.href='/admin';
             } catch(err){
               if (msg) { msg.textContent=err.message||String(err); msg.className='text-sm text-red-500'; }
@@ -102,9 +160,9 @@ if (!post) {
       </>
     ) : (
       <div class="text-center py-16">
-        <p class="text-lg font-semibold">文章未找到</p>
+        <p class="text-lg font-semibold">{_("post.notFound")}</p>
         <p class="opacity-60 text-sm mt-2">id: {id}</p>
-        <a href="/admin" class="btn-regular mt-6 inline-flex px-4 py-2 text-sm rounded-lg" style="background: var(--primary); color:white;">返回列表</a>
+        <a href="/admin" class="btn-regular mt-6 inline-flex px-4 py-2 text-sm rounded-lg" style="background: var(--primary); color:white;">{_("admin.backList")}</a>
       </div>
     )}
   </div>

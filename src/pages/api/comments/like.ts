@@ -8,7 +8,7 @@ export const POST: APIRoute = async (ctx) => {
   const body: any = await ctx.request.json().catch(() => ({}));
   const commentId = body.commentId ?? body.id;
   if (!commentId)
-    return new Response(JSON.stringify({ error: "commentId required" }), {
+    return new Response(JSON.stringify({ error: "缺少 commentId 参数" }), {
       status: 400,
     });
   let userId: string | null = null;
@@ -18,7 +18,7 @@ export const POST: APIRoute = async (ctx) => {
       (session as any)?.user?.id ?? (session as any)?.session?.userId ?? null;
   } catch {}
   if (!userId)
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    return new Response(JSON.stringify({ error: "未登录，请先登录" }), {
       status: 401,
     });
   const rid = `r_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
@@ -47,7 +47,7 @@ export const POST: APIRoute = async (ctx) => {
         { headers: { "Content-Type": "application/json" } },
       );
     }
-    return new Response(JSON.stringify({ error: "Failed" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "点赞失败" }), { status: 500 });
   }
   const cnt = await db.$client.execute({
     sql: "SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?",

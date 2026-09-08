@@ -17,7 +17,7 @@ const limit = 10;
 const offset = (page - 1) * limit;
 
 // Try D1 first, fallback to seedData mock
-type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; publishedAt?: number | null; createdAt: number; tags?: string[] };
+type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; cover: string | null; category: string | null; publishedAt?: number | null; createdAt: number; tags?: string[] };
 
 let posts: PostRow[] = [];
 let total = 0;
@@ -41,12 +41,15 @@ try {
       .from(tagsTable)
       .innerJoin(postTags, eq(postTags.tagId, tagsTable.id))
       .where(eq(postTags.postId, r.id));
+    const rec = r as unknown as Record<string, unknown>;
     posts.push({
       id: r.id,
       slug: r.slug,
       title: r.title,
       excerpt: r.excerpt,
       content: r.content,
+      cover: (rec.cover as string | null) ?? null,
+      category: (rec.category as string | null) ?? null,
       publishedAt: r.publishedAt,
       createdAt: r.createdAt,
       tags: tagRows.map((x) => x.slug),
@@ -57,19 +60,24 @@ try {
   }
 } catch {
   usedMock = true;
-  const all = seedData.posts.map((p) => ({
-    id: p.id,
-    slug: p.slug,
-    title: p.title,
-    excerpt: p.excerpt,
-    content: p.content,
-    publishedAt: p.publishedAt,
-    createdAt: p.createdAt,
-    tags: seedData.postTags.filter((pt) => pt.postId === p.id).map((pt) => {
-      const tag = seedData.tags.find((t) => t.id === pt.tagId);
-      return tag?.slug ?? "";
-    }).filter(Boolean),
-  }));
+  const all = seedData.posts.map((p) => {
+    const rec = p as unknown as Record<string, unknown>;
+    return {
+      id: p.id,
+      slug: p.slug,
+      title: p.title,
+      excerpt: p.excerpt,
+      content: p.content,
+      cover: (rec.cover as string | null) ?? null,
+      category: (rec.category as string | null) ?? null,
+      publishedAt: p.publishedAt,
+      createdAt: p.createdAt,
+      tags: seedData.postTags.filter((pt) => pt.postId === p.id).map((pt) => {
+        const tag = seedData.tags.find((t) => t.id === pt.tagId);
+        return tag?.slug ?? "";
+      }).filter(Boolean),
+    };
+  });
   total = all.length;
   posts = all.slice(offset, offset + limit);
 }

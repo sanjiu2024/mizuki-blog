@@ -3,7 +3,12 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "./db/client";
 import * as schema from "./db/schema";
 
-const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:4321";
+const baseURL = (process.env.BETTER_AUTH_URL ?? "http://localhost:4321").replace(/\/+$/, "");
+
+const extraOrigins = (process.env.TRUSTED_ORIGINS ?? "")
+  .split(",")
+  .map((s) => s.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
@@ -12,6 +17,8 @@ export const auth = betterAuth({
     baseURL,
     "http://localhost:4321",
     "http://127.0.0.1:4321",
+    "https://vvvvvv.bigsb.cn",
+    ...extraOrigins,
   ].filter(Boolean),
   secret:
     process.env.BETTER_AUTH_SECRET ?? "dev-secret-please-change-32-chars-min",

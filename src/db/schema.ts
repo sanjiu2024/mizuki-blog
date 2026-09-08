@@ -99,6 +99,19 @@ export const verification = sqliteTable(
 export const user = users;
 
 // ── posts ──
+export const POST_CATEGORIES = [
+  "技术",
+  "生活",
+  "随笔",
+  "教程",
+  "二次元",
+  "未分类",
+] as const;
+export type PostCategory = (typeof POST_CATEGORIES)[number];
+
+export const isPostCategory = (v: unknown): v is PostCategory =>
+  typeof v === "string" && (POST_CATEGORIES as readonly string[]).includes(v);
+
 export const posts = sqliteTable(
   "posts",
   {
@@ -107,6 +120,8 @@ export const posts = sqliteTable(
     title: text("title").notNull(),
     excerpt: text("excerpt"),
     content: text("content").notNull(),
+    cover: text("cover"),
+    category: text("category").notNull().default("未分类"),
     status: text("status").notNull().default("published"),
     authorId: text("author_id").references(() => users.id),
     publishedAt: integer("published_at"),
@@ -116,6 +131,8 @@ export const posts = sqliteTable(
   (t) => [
     index("idx_posts_slug").on(t.slug),
     index("idx_posts_published").on(t.publishedAt),
+    index("idx_posts_status").on(t.status),
+    index("idx_posts_category").on(t.category),
   ],
 );
 
