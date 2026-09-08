@@ -1,0 +1,233 @@
+---
+export const prerender = false;
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { db } from "../../db/client";
+import { normalizeRole } from "../../lib/rbac";
+import { getLangFromUrl, createTranslator } from "../../i18n";
+
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
+
+const me = Astro.locals.user as { id?: string; role?: unknown } | null;
+const myRole = normalizeRole(me?.role);
+if (!me || (myRole !== "admin" && myRole !== "super_admin")) {
+  return new Response("仅管理员和超级管理员可访问", { status: 403 });
+}
+
+type FriendRow = {
+  id: string;
+  name: string;
+  url: string;
+  description: string | null;
+  avatar: string | null;
+  sort: number;
+};
+
+let friends: FriendRow[] = [];
+try {
+  const rs = await db.$client.execute({
+    sql: "SELECT id, name, url, description, avatar, sort FROM friends ORDER BY sort ASC, created_at ASC",
+    args: [],
+  });
+  friends = (rs.rows as unknown as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id ?? ""),
+    name: String(r.name ?? ""),
+    url: String(r.url ?? ""),
+    description: (r.description as string | null) ?? null,
+    avatar: (r.avatar as string | null) ?? null,
+    sort: Number(r.sort ?? 0),
+  }));
+} catch {
+  friends = [];
+}
+---
+
+<BaseLayout title={`友情链接管理 — Mizuki`} lang={lang}>
+  <div class="col-span-1 lg:col-start-2 w-full min-w-0 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold">友情链接</h1>
+        <p class="text-sm opacity-60 mt-1">共 {friends.length} 个 · 显示在网站底部，仅管理员可修改</p>
+      </div>
+      <a href="/admin" class="btn-plain px-4 py-2 text-sm">返回后台</a>
+    </div>
+
+    <div class="card-base enable-card-border p-4 sm:p-6 mb-6" style="border-radius: var(--radius-large);">
+      <h2 class="text-base font-semibold mb-4">新增友链</h2>
+      <form id="friend-add" class="grid gap-3 sm:grid-cols-2">
+        <input name="name" required maxlength="100" placeholder="网站名称 *" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <input name="url" required placeholder="https://example.com *" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <input name="description" maxlength="500" placeholder="一句话描述（可选）" class="rounded-lg border px-3 py-2 text-sm sm:col-span-2" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <input name="avatar" placeholder="头像 URL（可选，http(s) 或 / 开头）" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <input name="sort" type="number" step="1" value="0" placeholder="排序（数字越小越靠前）" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <div class="sm:col-span-2">
+          <button type="submit" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">添加</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card-base enable-card-border overflow-hidden" style="border-radius: var(--radius-large);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-xs opacity-60 border-b" style="border-color: var(--line-divider);">
+            <tr>
+              <th class="text-left px-4 py-3 font-medium">网站</th>
+              <th class="text-left px-4 py-3 font-medium hidden md:table-cell">链接</th>
+              <th class="text-left px-4 py-3 font-medium">排序</th>
+              <th class="text-right px-4 py-3 font-medium">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {friends.length === 0 ? (
+              <tr><td colspan="4" class="text-center py-12 opacity-50">暂无友链，先在上方添加一个吧</td></tr>
+            ) : friends.map((f) => (
+              <tr class="border-b last:border-0" style="border-color: var(--line-divider);" data-row={f.id}>
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    {f.avatar ? (
+                      <img src={f.avatar} alt="" loading="lazy" class="h-7 w-7 rounded-lg object-cover border" style="border-color: var(--line-divider);" />
+                    ) : (
+                      <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold text-white" style="background: var(--primary);">{f.name.slice(0, 1)}</span>
+                    )}
+                    <div class="min-w-0">
+                      <div class="font-medium truncate max-w-[12rem]">{f.name}</div>
+                      {f.description ? <div class="text-xs opacity-60 truncate max-w-[12rem]">{f.description}</div> : null}
+                    </div>
+                  </div>
+                </td>
+                <td class="px-4 py-3 opacity-60 hidden md:table-cell max-w-[16rem] truncate"><a href={f.url} target="_blank" rel="noopener noreferrer" class="underline">{f.url}</a></td>
+                <td class="px-4 py-3">
+                  <input type="number" step="1" value={f.sort} data-sort-for={f.id} class="w-16 rounded-lg border px-2 py-1 text-xs" style="background: var(--card-bg); border-color: var(--line-divider);" />
+                </td>
+                <td class="px-4 py-3 text-right whitespace-nowrap">
+                  <button data-save={f.id} class="btn-plain px-3 py-1 text-xs font-medium">保存排序</button>
+                  <button data-edit={f.id} data-name={f.name} data-url={f.url} data-desc={f.description ?? ""} data-avatar={f.avatar ?? ""} class="btn-plain px-3 py-1 text-xs font-medium">编辑</button>
+                  <button data-del={f.id} data-name={f.name} class="px-3 py-1 text-xs font-medium rounded-lg border" style="border-color: #ef4444; color: #ef4444;">删除</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p id="friends-msg" class="mt-4 text-sm hidden"></p>
+
+    <dialog id="friend-editor" class="rounded-2xl border p-6 w-[min(28rem,90vw)]" style="background: var(--card-bg); border-color: var(--line-divider);">
+      <h2 class="text-base font-semibold mb-4">编辑友链</h2>
+      <form id="friend-edit-form" method="dialog" class="grid gap-3">
+        <input type="hidden" name="id" />
+        <input name="name" required maxlength="100" placeholder="网站名称 *" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <input name="url" required placeholder="https://example.com *" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <input name="description" maxlength="500" placeholder="一句话描述（可选）" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <input name="avatar" placeholder="头像 URL（可选）" class="rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);" />
+        <div class="flex gap-2 justify-end mt-2">
+          <button type="button" id="editor-cancel" class="btn-plain px-4 py-2 text-sm">取消</button>
+          <button type="submit" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">保存</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+
+  <script is:inline>
+    const msg = document.getElementById('friends-msg');
+    function note(text, ok) {
+      if (!msg) return;
+      msg.textContent = text;
+      msg.className = 'mt-4 text-sm ' + (ok ? 'text-green-600' : 'text-red-500');
+      msg.classList.remove('hidden');
+    }
+    async function callApi(method, body) {
+      const res = await fetch('/api/admin/friends', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('请求失败: ' + res.status));
+      return data;
+    }
+    const addForm = document.getElementById('friend-add');
+    if (addForm) {
+      addForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(addForm);
+        try {
+          await callApi('POST', {
+            name: String(fd.get('name') || ''),
+            url: String(fd.get('url') || ''),
+            description: String(fd.get('description') || ''),
+            avatar: String(fd.get('avatar') || ''),
+            sort: Number(fd.get('sort') || 0),
+          });
+          note('添加成功', true);
+          setTimeout(() => location.reload(), 500);
+        } catch (err) {
+          note(err.message || String(err), false);
+        }
+      });
+    }
+    document.querySelectorAll('[data-del]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del');
+        const name = btn.getAttribute('data-name') || '';
+        if (!id || !confirm('确定删除「' + name + '」吗？')) return;
+        try {
+          await callApi('DELETE', { id });
+          note('已删除', true);
+          setTimeout(() => location.reload(), 500);
+        } catch (err) {
+          note(err.message || String(err), false);
+        }
+      });
+    });
+    document.querySelectorAll('[data-save]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-save');
+        const input = document.querySelector('input[data-sort-for="' + id + '"]');
+        if (!id || !input) return;
+        try {
+          await callApi('PATCH', { id, sort: Number(input.value || 0) });
+          note('排序已保存', true);
+          setTimeout(() => location.reload(), 500);
+        } catch (err) {
+          note(err.message || String(err), false);
+        }
+      });
+    });
+    const dialog = document.getElementById('friend-editor');
+    const editForm = document.getElementById('friend-edit-form');
+    document.querySelectorAll('[data-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (!dialog || !editForm) return;
+        editForm.id.value = btn.getAttribute('data-edit') || '';
+        editForm.name.value = btn.getAttribute('data-name') || '';
+        editForm.url.value = btn.getAttribute('data-url') || '';
+        editForm.description.value = btn.getAttribute('data-desc') || '';
+        editForm.avatar.value = btn.getAttribute('data-avatar') || '';
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+      });
+    });
+    const cancelBtn = document.getElementById('editor-cancel');
+    if (cancelBtn && dialog) cancelBtn.addEventListener('click', () => dialog.close());
+    if (editForm) {
+      editForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(editForm);
+        try {
+          await callApi('PATCH', {
+            id: String(fd.get('id') || ''),
+            name: String(fd.get('name') || ''),
+            url: String(fd.get('url') || ''),
+            description: String(fd.get('description') || ''),
+            avatar: String(fd.get('avatar') || ''),
+          });
+          note('已保存', true);
+          setTimeout(() => location.reload(), 500);
+        } catch (err) {
+          note(err.message || String(err), false);
+        }
+      });
+    }
+  </script>
+</BaseLayout>

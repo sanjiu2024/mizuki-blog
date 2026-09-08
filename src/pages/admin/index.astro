@@ -73,7 +73,10 @@ const tabHref = (s: string) => {
         <h1 class="text-2xl font-bold">{_("admin.title")}</h1>
         <p class="text-sm opacity-60 mt-1">{_("admin.countLabel", { n: counts.all })}</p>
       </div>
-      <a href="/admin/posts/new" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">{_("admin.newPost")}</a>
+      <div class="flex items-center gap-2">
+        <a href="/admin/friends" class="btn-plain px-4 py-2 text-sm font-medium rounded-lg">友情链接</a>
+        <a href="/admin/posts/new" class="btn-regular px-4 py-2 text-sm font-semibold rounded-lg" style="background: var(--primary); color: white;">{_("admin.newPost")}</a>
+      </div>
     </div>
 
     <div class="flex flex-wrap items-center gap-2 mb-4">
@@ -151,7 +154,7 @@ const tabHref = (s: string) => {
         if (!confirm(confirmDelete)) return;
         const msg = document.getElementById('admin-msg');
         try {
-          const res = await fetch('/api/posts', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+          const res = await fetch('/api/posts', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ id }) });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || deleteFail);
           if (msg) { msg.textContent = deleteSuccess; msg.className = 'mt-4 text-sm text-green-600'; msg.classList.remove('hidden'); }

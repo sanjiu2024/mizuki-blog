@@ -114,7 +114,8 @@ const tabHref = (s: string) => {
                 </td>
                 <td class="px-4 py-3 text-right whitespace-nowrap">
                   <a href={p.status === "published" ? `/posts/${p.slug}` : `/posts/${p.slug}?preview=1`} target="_blank" class="btn-plain px-3 py-1 text-xs font-medium mr-1">{p.status === "published" ? _("author.view") : _("admin.preview")}</a>
-                  <a href={`/admin/posts/${p.id}`} class="btn-plain px-3 py-1 text-xs font-medium">{_("common.edit")}</a>
+                  <a href={`/admin/posts/${p.id}`} class="btn-plain px-3 py-1 text-xs font-medium mr-1">{_("common.edit")}</a>
+                  <button type="button" data-del-id={p.id} class="btn-plain px-3 py-1 text-xs font-medium text-red-600 dark:text-red-400 js-del">{_("common.delete")}</button>
                 </td>
               </tr>
             ))}
@@ -126,4 +127,18 @@ const tabHref = (s: string) => {
       <a href="/" class="btn-plain px-4 py-2 text-sm">{_("author.backHome")}</a>
     </div>
   </div>
+  <script is:inline>
+    document.querySelectorAll('.js-del').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('确定删除该文章？此操作不可撤销')) return;
+        const id = btn.getAttribute('data-del-id');
+        try {
+          const res = await fetch('/api/posts', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ id }) });
+          const data = await res.json().catch(()=>({}));
+          if (!res.ok) throw new Error(data.error || '删除失败');
+          location.reload();
+        } catch (e) { alert(e.message || String(e)); }
+      });
+    });
+  </script>
 </BaseLayout>

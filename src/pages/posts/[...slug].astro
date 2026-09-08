@@ -10,7 +10,7 @@ export const prerender = false;
 const { slug } = Astro.params;
 const slugStr = Array.isArray(slug) ? slug.join("/") : slug ?? "";
 
-type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; cover: string | null; category: string | null; status: string; publishedAt?: number | null; createdAt: number; tags?: string[] };
+type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; cover: string | null; category: string | null; status: string; publishedAt?: number | null; createdAt: number; tags?: string[]; views: number; authorId?: string | null; authorName?: string | null; authorImage?: string | null };
 
 let post: PostRow | null = null;
 const isPreview = Astro.url.searchParams.get("preview") === "1";
@@ -28,6 +28,38 @@ try {
         .innerJoin(postTags, eq(postTags.tagId, tagsTable.id))
         .where(eq(postTags.postId, row.id));
       const r = row as unknown as Record<string, unknown>;
+      // Increment view count, then read back
+      let views = Number((r.views as number | null) ?? 0);
+      try {
+        await db.$client.execute({
+          sql: "UPDATE posts SET views = views + 1 WHERE id=?",
+          args: [row.id],
+        });
+        const vRow = await db.$client.execute({
+          sql: "SELECT views FROM posts WHERE id=?",
+          args: [row.id],
+        });
+        const v = vRow.rows?.[0] as Record<string, unknown> | undefined;
+        if (v && v.views != null) views = Number(v.views);
+        else views += 1;
+      } catch {
+        views += 1;
+      }
+      // Author via JOIN users
+      let authorName: string | null = null;
+      let authorImage: string | null = null;
+      try {
+        const aRow = await db.$client.execute({
+          sql: "SELECT users.name, users.image FROM users INNER JOIN posts ON posts.author_id = users.id WHERE posts.id=?",
+          args: [row.id],
+        });
+        const a = aRow.rows?.[0] as Record<string, unknown> | undefined;
+        authorName = (a?.name as string | null) ?? null;
+        authorImage = (a?.image as string | null) ?? null;
+      } catch {
+        authorName = null;
+        authorImage = null;
+      }
       post = {
         id: row.id,
         slug: row.slug,
@@ -40,6 +72,10 @@ try {
         publishedAt: row.publishedAt,
         createdAt: row.createdAt,
         tags: tagRows.map((x) => x.slug),
+        views,
+        authorId: (r.authorId as string | null) ?? (r.author_id as string | null) ?? null,
+        authorName,
+        authorImage,
       };
     }
   } else {
@@ -62,12 +98,30 @@ try {
       publishedAt: found.publishedAt,
       createdAt: found.createdAt,
       tags: seedData.postTags.filter((pt) => pt.postId === found.id).map((pt) => seedData.tags.find((t) => t.id === pt.tagId)?.slug ?? "").filter(Boolean),
+      views: Number((f.views as number | null) ?? 0),
+      authorId: (f.authorId as string | null) ?? null,
+      authorName: null,
+      authorImage: null,
     };
   }
 }
 
 if (!post) {
   Astro.response.status = 404;
+}
+
+let likeCount = 0;
+if (post) {
+  try {
+    const r = await db.$client.execute({
+      sql: "SELECT COUNT(*) as c FROM post_likes WHERE post_id=?",
+      args: [post.id],
+    });
+    const row = r.rows?.[0] as Record<string, unknown> | undefined;
+    likeCount = Number(row?.c ?? 0);
+  } catch {
+    likeCount = 0;
+  }
 }
 
 function markdownToHtml(md: string): string {
@@ -122,7 +176,24 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
             {post.title}
           </h1>
           <div class="mt-3 flex flex-wrap items-center gap-3 text-sm" style="color: oklch(0.5 0.02 var(--hue));">
+            {post.authorName && (
+              <span class="inline-flex items-center gap-1.5">
+                {post.authorImage ? (
+                  <img src={post.authorImage} alt={post.authorName} loading="lazy" class="w-6 h-6 rounded-full object-cover" style="border:1px solid var(--line-divider);" />
+                ) : (
+                  <span class="w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-bold" style="background: var(--primary); color: white;">{post.authorName.slice(0, 1).toUpperCase()}</span>
+                )}
+                <span class="font-medium">{post.authorName}</span>
+              </span>
+            )}
             <time datetime={new Date(dateSource).toISOString()} title={dateTimeLabel}>{dateLabel}</time>
+            <span class="inline-flex items-center gap-1" aria-label={`浏览量 ${post.views}`}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              {post.views}
+            </span>
             {post.category && (
               <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" style="background: var(--primary); color: white;">{post.category}</span>
             )}
@@ -139,9 +210,69 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
               {post.excerpt}
             </p>
           )}
+          <div class="mt-4 flex items-center gap-2">
+            <button
+              id="post-like-btn"
+              type="button"
+              data-post-id={post.id}
+              aria-label="给文章点赞"
+              aria-pressed="false"
+              class="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition hover:-translate-y-0.5"
+              style="background: var(--btn-regular-bg); color: var(--btn-content);"
+            >
+              <svg id="post-like-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+              </svg>
+              <span id="post-like-count">{likeCount}</span>
+            </button>
+          </div>
         </header>
 
         <div class="prose prose-neutral dark:prose-invert max-w-none prose-headings:tracking-tight prose-a:decoration-2" set:html={contentHtml} />
+        <script is:inline define:vars={{ postId: post.id, initialCount: likeCount }}>
+          (() => {
+            const btn = document.getElementById('post-like-btn');
+            const icon = document.getElementById('post-like-icon');
+            const countEl = document.getElementById('post-like-count');
+            if (!btn || !icon || !countEl) return;
+            const paint = (liked, count) => {
+              countEl.textContent = String(count);
+              btn.setAttribute('aria-pressed', liked ? 'true' : 'false');
+              icon.setAttribute('fill', liked ? 'currentColor' : 'none');
+              btn.style.color = liked ? 'var(--primary)' : 'var(--btn-content)';
+            };
+            let liked = false;
+            let count = initialCount;
+            paint(false, count);
+            fetch(`/api/posts/${postId}/like`, { credentials: 'include' })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((d) => { if (d && typeof d.count === 'number') { liked = !!d.liked; count = d.count; paint(liked, count); } })
+              .catch(() => {});
+            btn.addEventListener('click', async () => {
+              const prevLiked = liked;
+              const prevCount = count;
+              liked = !liked;
+              count = prevCount + (liked ? 1 : -1);
+              paint(liked, Math.max(0, count));
+              btn.disabled = true;
+              try {
+                const res = await fetch(`/api/posts/${postId}/like`, { method: 'POST', credentials: 'include' });
+                const d = await res.json().catch(() => ({}));
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                if (!res.ok) throw new Error(d.error || 'Failed');
+                liked = !!d.liked;
+                count = typeof d.count === 'number' ? d.count : (typeof d.likeCount === 'number' ? d.likeCount : count);
+                paint(liked, count);
+              } catch (e) {
+                console.error(e);
+                liked = prevLiked;
+                paint(liked, prevCount);
+              } finally {
+                btn.disabled = false;
+              }
+            });
+          })();
+        </script>
 
         <!-- Comments -->
         <section class="mt-10 pt-8" style="border-top: 1px solid var(--line-divider);">
@@ -155,7 +286,10 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
               <button id="reply-cancel" type="button" class="underline text-xs" style="color: var(--primary);">Cancel</button>
             </div>
             <form id="comment-form" class="card-base enable-card-border p-4 space-y-3" style="border-radius: var(--radius-large);">
-              <textarea id="comment-content" placeholder="Write a comment... (login required)" rows="3" class="w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
+              <div class="flex gap-3">
+                <img id="comment-self-avatar" alt="我的头像" loading="lazy" class="w-9 h-9 rounded-full object-cover shrink-0 hidden" style="border:1px solid var(--line-divider);" />
+                <textarea id="comment-content" placeholder="Write a comment... (login required)" rows="3" class="w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
+              </div>
               <div class="flex justify-between items-center">
                 <a href="/login" class="text-xs underline opacity-60">Login to comment</a>
                 <button type="submit" class="btn-regular px-5 py-2 text-sm font-semibold">Post comment</button>
@@ -175,6 +309,17 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
               let replyParentId = null;
               let replyParentLabel = '';
               function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+              fetch('/api/auth/get-session', { credentials: 'include' })
+                .then((r) => (r.ok ? r.json() : null))
+                .then((d) => {
+                  const u = d && (d.user || d.data && d.data.user) || null;
+                  const img = u && u.image || null;
+                  if (img) {
+                    const av = document.getElementById('comment-self-avatar');
+                    if (av) { av.src = img; av.classList.remove('hidden'); }
+                  }
+                })
+                .catch(() => {});
               function buildTree(rows){
                 const byId = new Map(); const roots=[];
                 rows.forEach(r=> byId.set(r.id, {...r, children:[]}));
@@ -185,6 +330,16 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                 const sortRec=(arr)=>{ arr.sort((a,b)=>a.created_at-b.created_at); arr.forEach(x=>sortRec(x.children)); };
                 sortRec(roots); return roots;
               }
+              function avatarHtml(node){
+                const author = node.author || {};
+                const name = author.name || '匿名用户';
+                const img = author.image || '';
+                const initial = esc(name.slice(0,1).toUpperCase());
+                const pic = img
+                  ? `<img src="${esc(img)}" alt="${esc(name)}" loading="lazy" class="w-8 h-8 rounded-full object-cover shrink-0" style="border:1px solid var(--line-divider);" onerror="this.outerHTML='<span class=&quot;w-8 h-8 rounded-full inline-flex items-center justify-center text-xs font-bold shrink-0&quot; style=&quot;background:var(--primary);color:white;&quot;>'+${initial}+'</span>'" />`
+                  : `<span class="w-8 h-8 rounded-full inline-flex items-center justify-center text-xs font-bold shrink-0" style="background:var(--primary);color:white;">${initial}</span>`;
+                return `<div class="flex items-center gap-2 min-w-0">${pic}<span class="font-semibold text-sm truncate">${esc(name)}</span></div>`;
+              }
               function renderNode(node, depth){
                 const pad = Math.min(depth, 5);
                 const indent = pad ? `margin-left:${pad*16}px; border-left:2px solid var(--line-divider); padding-left:12px;` : '';
@@ -192,13 +347,14 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                 const time = new Date(node.created_at).toLocaleString();
                 const childrenHtml = (node.children||[]).map(c=>renderNode(c, depth+1)).join('');
                 return `<div class="card-base p-3 text-sm" style="border-radius:0.75rem; border:1px solid var(--line-divider); ${indent}">
-                  <div class="flex justify-between items-start gap-2">
-                    <div class="opacity-60 text-xs">${esc(time)}</div>
-                    <div class="flex items-center gap-2">
-                      <button data-like="${node.id}" class="inline-flex items-center gap-1 text-xs btn-plain px-2 py-1">♥ <span class="like-count">${likeCount}</span></button>
+                  <div class="flex justify-between items-center gap-2">
+                    ${avatarHtml(node)}
+                    <div class="flex items-center gap-2 shrink-0">
+                      <button data-like="${node.id}" class="inline-flex items-center gap-1 text-xs btn-plain px-2 py-1" aria-label="给评论点赞">♥ <span class="like-count">${likeCount}</span></button>
                       <button data-reply="${node.id}" data-label="${esc((node.content||'').slice(0,24))}" class="text-xs btn-plain px-2 py-1">Reply</button>
                     </div>
                   </div>
+                  <div class="opacity-60 text-xs mt-1">${esc(time)}</div>
                   <div class="mt-1 break-words">${esc(node.content)}</div>
                   ${childrenHtml ? `<div class="mt-3 space-y-3">${childrenHtml}</div>` : ''}
                 </div>`;
@@ -232,10 +388,13 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                           res = await fetch('/api/comments/like', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ commentId: cid }) });
                         }
                         const d=await res.json().catch(()=>({}));
+                        if(res.status===401){ window.location.href='/login'; return; }
                         if(!res.ok) throw new Error(d.error||'Failed');
                         const span = btn.querySelector('.like-count');
-                        if(span && typeof d.likeCount==='number') span.textContent = String(d.likeCount);
+                        const next = typeof d.likeCount==='number' ? d.likeCount : (typeof d.count==='number' ? d.count : null);
+                        if(span && next!==null) span.textContent = String(next);
                         btn.style.color = d.liked ? 'var(--primary)' : '';
+                        btn.setAttribute('aria-pressed', d.liked ? 'true' : 'false');
                       }catch(e){ console.error(e); }
                       btn.disabled=false;
                     });
@@ -254,6 +413,7 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                   if(replyParentId) payload.parentId = replyParentId;
                   const res = await fetch('/api/comments', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(payload) });
                   const data = await res.json().catch(()=>({}));
+                  if (res.status === 401) { window.location.href = '/login'; return; }
                   if (!res.ok) throw new Error(data.error || 'Failed');
                   msg.textContent='Posted!'; input.value=''; replyParentId=null; replyIndicator.classList.add('hidden'); input.placeholder='Write a comment... (login required)'; await load();
                 } catch(err){ msg.textContent=err.message||String(err); msg.classList.add('text-red-500'); }

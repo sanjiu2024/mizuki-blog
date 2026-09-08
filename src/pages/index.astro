@@ -17,7 +17,7 @@ const limit = 10;
 const offset = (page - 1) * limit;
 
 // Try D1 first, fallback to seedData mock
-type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; cover: string | null; category: string | null; publishedAt?: number | null; createdAt: number; tags?: string[] };
+type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; cover: string | null; category: string | null; publishedAt?: number | null; createdAt: number; tags?: string[]; views?: number | null; authorName?: string | null; authorImage?: string | null };
 
 let posts: PostRow[] = [];
 let total = 0;
@@ -42,6 +42,23 @@ try {
       .innerJoin(postTags, eq(postTags.tagId, tagsTable.id))
       .where(eq(postTags.postId, r.id));
     const rec = r as unknown as Record<string, unknown>;
+    let authorName: string | null = null;
+    let authorImage: string | null = null;
+    try {
+      const authorId = (rec.authorId as string | null) ?? (rec.author_id as string | null) ?? null;
+      if (authorId) {
+        const aRow = await db.$client.execute({
+          sql: "SELECT name, image FROM users WHERE id=?",
+          args: [authorId],
+        });
+        const a = aRow.rows?.[0] as Record<string, unknown> | undefined;
+        authorName = (a?.name as string | null) ?? null;
+        authorImage = (a?.image as string | null) ?? null;
+      }
+    } catch {
+      authorName = null;
+      authorImage = null;
+    }
     posts.push({
       id: r.id,
       slug: r.slug,
@@ -53,6 +70,9 @@ try {
       publishedAt: r.publishedAt,
       createdAt: r.createdAt,
       tags: tagRows.map((x) => x.slug),
+      views: Number((rec.views as number | null) ?? 0),
+      authorName,
+      authorImage,
     });
   }
   if (posts.length === 0 && total === 0) {
@@ -84,6 +104,24 @@ try {
 
 const totalPages = Math.max(1, Math.ceil(total / limit));
 if (page > totalPages) page = totalPages;
+
+const likeCounts = new Map<string, number>();
+try {
+  if (posts.length > 0) {
+    const ids = posts.map((p) => p.id);
+    const placeholders = ids.map(() => "?").join(",");
+    const likeRows = await db.$client.execute({
+      sql: `SELECT post_id, COUNT(*) as c FROM post_likes WHERE post_id IN (${placeholders}) GROUP BY post_id`,
+      args: ids,
+    });
+    for (const row of likeRows.rows ?? []) {
+      const r = row as Record<string, unknown>;
+      if (typeof r.post_id === "string") likeCounts.set(r.post_id, Number(r.c ?? 0));
+    }
+  }
+} catch {
+  // post_likes 表不存在（未迁移）或 mock 数据源时忽略，卡片不显示点赞数
+}
 
 const hasPrev = page > 1;
 const hasNext = page < totalPages;
@@ -125,6 +163,10 @@ const _ = createTranslator(lang);
               tags={post.tags ?? []}
               cover={post.cover}
               category={post.category}
+              likeCount={likeCounts.has(post.id) ? likeCounts.get(post.id) : null}
+              views={post.views ?? null}
+              authorName={post.authorName ?? null}
+              authorImage={post.authorImage ?? null}
             />
           ))}
         </div>

@@ -124,6 +124,7 @@ export const posts = sqliteTable(
     category: text("category").notNull().default("未分类"),
     status: text("status").notNull().default("published"),
     authorId: text("author_id").references(() => users.id),
+    views: integer("views").notNull().default(0),
     publishedAt: integer("published_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at"),
@@ -200,17 +201,51 @@ export const commentReactions = sqliteTable(
   (t) => [uniqueIndex("idx_reaction_unique").on(t.commentId, t.userId)],
 );
 
+// ── post_likes ──
+export const postLikes = sqliteTable(
+  "post_likes",
+  {
+    id: text("id").primaryKey(),
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("idx_post_like_unique").on(t.postId, t.userId)],
+);
+
+// ── friends (blogroll / 友情链接, admin + super_admin 可管理) ──
+export const friends = sqliteTable(
+  "friends",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    description: text("description"),
+    avatar: text("avatar"),
+    sort: integer("sort").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at"),
+  },
+  (t) => [index("idx_friends_sort").on(t.sort, t.createdAt)],
+);
+
 // ── relations ──
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
   comments: many(comments),
   commentReactions: many(commentReactions),
+  postLikes: many(postLikes),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
   author: one(users, { fields: [posts.authorId], references: [users.id] }),
   postTags: many(postTags),
   comments: many(comments),
+  likes: many(postLikes),
 }));
 
 export const tagsRelations = relations(tags, ({ many }) => ({
@@ -247,3 +282,14 @@ export const commentReactionsRelations = relations(
     }),
   }),
 );
+
+export const postLikesRelations = relations(postLikes, ({ one }) => ({
+  post: one(posts, {
+    fields: [postLikes.postId],
+    references: [posts.id],
+  }),
+  user: one(users, {
+    fields: [postLikes.userId],
+    references: [users.id],
+  }),
+}));

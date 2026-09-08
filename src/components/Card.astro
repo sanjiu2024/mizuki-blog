@@ -7,8 +7,12 @@ interface Props {
   tags?: string[];
   cover?: string | null;
   category?: string | null;
+  likeCount?: number | null;
+  views?: number | null;
+  authorName?: string | null;
+  authorImage?: string | null;
 }
-const { href, title, excerpt, date, tags = [], cover = null, category = null } = Astro.props as Props;
+const { href, title, excerpt, date, tags = [], cover = null, category = null, likeCount = null, views = null, authorName = null, authorImage = null } = Astro.props as Props;
 
 function formatDate(d: string | number | null | undefined) {
   if (d == null) return "";
@@ -16,7 +20,7 @@ function formatDate(d: string | number | null | undefined) {
   if (Number.isNaN(ts)) return String(d);
   return new Date(ts).toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
 }
-const dateLabel = formatDate(date as any);
+const dateLabel = formatDate(date);
 ---
 <a
   href={href}
@@ -28,6 +32,16 @@ const dateLabel = formatDate(date as any);
       <img src={cover} alt="" loading="lazy" class="w-full h-40 object-cover rounded-xl border" style="border-color: var(--line-divider);" />
     )}
     <div class="flex flex-wrap items-center gap-2">
+      {authorName && (
+        <span class="inline-flex items-center gap-1.5 text-xs font-medium" style="color: var(--btn-content); opacity: 0.85;">
+          {authorImage ? (
+            <img src={authorImage} alt={authorName} loading="lazy" class="w-5 h-5 rounded-full object-cover" style="border:1px solid var(--line-divider);" />
+          ) : (
+            <span class="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] font-bold" style="background: var(--primary); color: white;">{authorName.slice(0, 1).toUpperCase()}</span>
+          )}
+          {authorName}
+        </span>
+      )}
       {dateLabel && (
         <time class="text-xs font-medium tracking-wide uppercase" style="color: var(--btn-content); opacity: 0.85;">
           {dateLabel}
@@ -36,6 +50,23 @@ const dateLabel = formatDate(date as any);
       {category && (
         <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold" style="background: var(--primary); color: white;">
           {category}
+        </span>
+      )}
+      {views != null && (
+        <span class:list={["inline-flex items-center gap-1 text-xs font-semibold", likeCount == null && "ml-auto"]} style="color: var(--btn-content); opacity: 0.8;" aria-label={`浏览量 ${views}`}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          {views}
+        </span>
+      )}
+      {likeCount != null && (
+        <span class="ml-auto inline-flex items-center gap-1 text-xs font-semibold" style="color: var(--btn-content); opacity: 0.8;" aria-label={`点赞数 ${likeCount}`}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+          </svg>
+          {likeCount}
         </span>
       )}
     </div>

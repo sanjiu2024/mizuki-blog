@@ -20,6 +20,31 @@ const lang = Astro.props.lang ?? detectedLang;
 const _ = createTranslator(lang);
 const { title = translate(lang, "site.title"), description = translate(lang, "site.description") } = Astro.props;
 const currentPath = Astro.url.pathname + Astro.url.search;
+
+type FriendLink = {
+  name: string;
+  url: string;
+  description: string | null;
+  avatar: string | null;
+};
+let friendLinks: FriendLink[] = [];
+try {
+  const { db } = await import("../db/client");
+  const rs = await db.$client.execute({
+    sql: "SELECT name, url, description, avatar FROM friends ORDER BY sort ASC, created_at ASC",
+    args: [],
+  });
+  friendLinks = (rs.rows as unknown as Array<Record<string, unknown>>).map(
+    (r) => ({
+      name: String(r.name ?? ""),
+      url: String(r.url ?? ""),
+      description: (r.description as string | null) ?? null,
+      avatar: (r.avatar as string | null) ?? null,
+    }),
+  ).filter((f) => f.name && f.url);
+} catch {
+  friendLinks = [];
+}
 ---
 
 <!doctype html>
@@ -88,6 +113,24 @@ const currentPath = Astro.url.pathname + Astro.url.search;
     </main>
 
     <footer class="mx-auto max-w-[var(--layout-page-width)] px-4 sm:px-6 lg:px-8 py-8 text-center text-sm" style="color: oklch(0.55 0.02 var(--hue)); border-top: 1px solid var(--line-divider);">
+      {friendLinks.length > 0 && (
+        <nav aria-label="友情链接" class="mb-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+          {friendLinks.map((f) => (
+            <a
+              href={f.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={f.description ?? f.name}
+              class="inline-flex items-center gap-1.5 hover:opacity-100 opacity-80 transition"
+            >
+              {f.avatar ? (
+                <img src={f.avatar} alt="" loading="lazy" class="h-4 w-4 rounded-full object-cover" />
+              ) : null}
+              <span>{f.name}</span>
+            </a>
+          ))}
+        </nav>
+      )}
       <p>{_("footer.copyright", { year: new Date().getFullYear() })}</p>
       <p class="mt-1 opacity-60">{_("footer.tagline")}</p>
     </footer>

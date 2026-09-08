@@ -147,7 +147,7 @@ if (!post) {
             };
             if (msg) { msg.textContent=saving; msg.className='text-sm'; msg.classList.remove('hidden'); }
             try {
-              const res = await fetch('/api/posts', { method: 'PATCH', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body)});
+              const res = await fetch('/api/posts', { method: 'PATCH', headers: { 'Content-Type':'application/json' }, credentials: 'include', body: JSON.stringify(body)});
               const data = await res.json().catch(()=>({}));
               if (!res.ok) throw new Error(data.error||saveFail);
               if (msg) { msg.textContent=saveSuccess; msg.className='text-sm text-green-600'; }

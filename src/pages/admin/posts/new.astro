@@ -122,7 +122,7 @@ const _ = createTranslator(lang);
       }
       if (msg) { msg.textContent = submitting; msg.className = 'text-sm'; msg.classList.remove('hidden'); }
       try {
-        const res = await fetch('/api/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch('/api/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
         const data = await res.json().catch(()=>({}));
         if (!res.ok) throw new Error(data.error || publishFail);
         if (msg) { msg.textContent = publishSuccess; msg.className = 'text-sm text-green-600'; }

@@ -82,9 +82,11 @@ export const GET: APIRoute = async (ctx) => {
   try {
     const rs = await db.$client.execute({
       sql: `SELECT c.id, c.post_id, c.author_id, c.parent_id, c.content, c.status, c.created_at,
-                COUNT(r.id) as likeCount
+                COUNT(r.id) as likeCount,
+                u.name as author_name, u.image as author_image
          FROM comments c
          LEFT JOIN comment_reactions r ON r.comment_id = c.id
+         LEFT JOIN users u ON u.id = c.author_id
          WHERE c.post_id = ? AND c.status='approved'
          GROUP BY c.id
          ORDER BY c.created_at ASC`,
@@ -95,6 +97,11 @@ export const GET: APIRoute = async (ctx) => {
     const normalized = rows.map((r: any) => ({
       ...r,
       likeCount: Number(r.likeCount ?? 0),
+      author: {
+        id: r.author_id ?? null,
+        name: r.author_name ?? null,
+        image: r.author_image ?? null,
+      },
     }));
     const tree = buildTree(normalized);
     return new Response(JSON.stringify({ comments: normalized, tree }), {
@@ -107,16 +114,36 @@ export const GET: APIRoute = async (ctx) => {
       .from(comments)
       .where(eq(comments.postId, postId))
       .orderBy(desc(comments.createdAt));
-    const mapped = rows.map((r: any) => ({
-      id: r.id,
-      post_id: r.postId,
-      author_id: r.authorId,
-      parent_id: r.parentId,
-      content: r.content,
-      status: r.status,
-      created_at: r.createdAt,
-      likeCount: 0,
-    }));
+    const mapped = await Promise.all(
+      rows.map(async (r: any) => {
+        let author: { id: string | null; name: string | null; image: string | null } = {
+          id: r.authorId ?? null,
+          name: null,
+          image: null,
+        };
+        if (r.authorId) {
+          try {
+            const u = await db.$client.execute({
+              sql: "SELECT id, name, image FROM users WHERE id=?",
+              args: [r.authorId],
+            });
+            const row = u.rows?.[0] as any;
+            if (row) author = { id: row.id, name: row.name ?? null, image: row.image ?? null };
+          } catch {}
+        }
+        return {
+          id: r.id,
+          post_id: r.postId,
+          author_id: r.authorId,
+          parent_id: r.parentId,
+          content: r.content,
+          status: r.status,
+          created_at: r.createdAt,
+          likeCount: 0,
+          author,
+        };
+      }),
+    );
     const tree = buildTree(mapped as any);
     return new Response(JSON.stringify({ comments: mapped, tree }), {
       headers: { "Content-Type": "application/json" },
@@ -149,10 +176,12 @@ export const POST: APIRoute = async (ctx) => {
 
   // auth check via better-auth session
   let userId: string | null = null;
+  let sessionUser: { name?: string | null; image?: string | null; email?: string | null } | null = null;
   try {
     const session = await auth.api.getSession({ headers: ctx.request.headers });
     userId =
       (session as any)?.user?.id ?? (session as any)?.session?.userId ?? null;
+    sessionUser = (session as any)?.user ?? null;
   } catch {}
   if (!userId)
     return new Response(
@@ -173,6 +202,7 @@ export const POST: APIRoute = async (ctx) => {
     );
 
   const id = `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const now = Date.now();
   await db.insert(comments).values({
     id,
     postId,
@@ -180,12 +210,42 @@ export const POST: APIRoute = async (ctx) => {
     parentId: parentId ?? null,
     content: content.trim(),
     status: "approved",
-    createdAt: Date.now(),
+    createdAt: now,
   });
-  return new Response(JSON.stringify({ ok: true, id }), {
-    status: 201,
-    headers: { "Content-Type": "application/json" },
-  });
+  let author = {
+    id: userId,
+    name: sessionUser?.name ?? null,
+    image: sessionUser?.image ?? null,
+  };
+  try {
+    const u = await db.$client.execute({
+      sql: "SELECT id, name, image FROM users WHERE id=?",
+      args: [userId],
+    });
+    const row = u.rows?.[0] as any;
+    if (row) author = { id: row.id, name: row.name ?? author.name, image: row.image ?? author.image };
+  } catch {}
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      id,
+      comment: {
+        id,
+        post_id: postId,
+        author_id: userId,
+        parent_id: parentId ?? null,
+        content: content.trim(),
+        created_at: now,
+        likeCount: 0,
+        author,
+      },
+      author,
+    }),
+    {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 };
 
 async function handleLike(ctx: any, commentId: string) {
