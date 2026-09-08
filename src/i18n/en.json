@@ -90,6 +90,7 @@
   "comments.posted": "Posted!",
   "comments.loadFail": "Failed to load.",
   "comments.actionFail": "Failed",
+  "comments.anonymous": "Anonymous",
   "auth.loginTitle": "Login",
   "auth.registerTitle": "Register",
   "auth.email": "Email",

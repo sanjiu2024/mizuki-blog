@@ -112,27 +112,68 @@ try {
       <slot />
     </main>
 
-    <footer class="mx-auto max-w-[var(--layout-page-width)] px-4 sm:px-6 lg:px-8 py-8 text-center text-sm" style="color: oklch(0.55 0.02 var(--hue)); border-top: 1px solid var(--line-divider);">
+    <footer class="mx-auto max-w-[var(--layout-page-width)] px-4 sm:px-6 lg:px-8 py-8" style="border-top: 1px solid var(--line-divider);">
       {friendLinks.length > 0 && (
-        <nav aria-label="友情链接" class="mb-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-          {friendLinks.map((f) => (
-            <a
-              href={f.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={f.description ?? f.name}
-              class="inline-flex items-center gap-1.5 hover:opacity-100 opacity-80 transition"
-            >
-              {f.avatar ? (
-                <img src={f.avatar} alt="" loading="lazy" class="h-4 w-4 rounded-full object-cover" />
-              ) : null}
-              <span>{f.name}</span>
+        <section aria-labelledby="footer-friends-title" class="card-base mb-6 p-4 sm:p-5 text-left" style="border: 1px solid var(--line-divider); border-radius: var(--radius-large); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h2 id="footer-friends-title" class="flex items-center gap-2 text-sm font-bold tracking-wide" style="color: var(--btn-content);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--primary);"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              友情链接
+              <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold" style="background: var(--btn-regular-bg); color: var(--btn-content);">{friendLinks.length}</span>
+            </h2>
+            <a href="/friends" class="inline-flex items-center gap-1 text-xs font-medium underline-offset-4 hover:underline" style="color: var(--primary);">
+              查看全部
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
             </a>
-          ))}
-        </nav>
+          </div>
+          <nav aria-label="友情链接" class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {friendLinks.map((f) => (
+              <a
+                href={f.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={f.description ? `${f.name} — ${f.description}` : f.name}
+                class="friend-card group flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-all duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2"
+                style="border: 1px solid var(--line-divider); background: var(--btn-regular-bg); border-radius: 0.75rem;"
+              >
+                {f.avatar ? (
+                  <img src={f.avatar} alt="" loading="lazy" class="h-6 w-6 shrink-0 rounded-full object-cover" style="box-shadow: 0 0 0 1px var(--line-divider);" />
+                ) : (
+                  <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style="background: var(--primary);" aria-hidden="true">{f.name.slice(0, 1)}</span>
+                )}
+                <span class="min-w-0">
+                  <span class="block truncate text-sm font-semibold leading-tight" style="color: var(--btn-content);">{f.name}</span>
+                  {f.description ? (
+                    <span class="block truncate text-xs leading-tight opacity-60">{f.description}</span>
+                  ) : null}
+                </span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="ml-auto shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-60 group-focus-visible:opacity-60"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+              </a>
+            ))}
+          </nav>
+        </section>
       )}
+      <div class="text-center text-sm" style="color: oklch(0.55 0.02 var(--hue));">
       <p>{_("footer.copyright", { year: new Date().getFullYear() })}</p>
       <p class="mt-1 opacity-60">{_("footer.tagline")}</p>
+      </div>
+    <style>
+      .friend-card:hover, .friend-card:focus-visible {
+        border-color: var(--primary);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 0 1px var(--primary);
+        outline-color: var(--primary);
+      }
+      .friend-link-card:hover, .friend-link-card:focus-visible {
+        border-color: var(--primary);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 0 0 1px var(--primary);
+        transform: translateY(-2px);
+        outline-color: var(--primary);
+      }
+      .friend-link-card .friend-avatar { transition: box-shadow 150ms; }
+      .friend-link-card:hover .friend-avatar, .friend-link-card:focus-visible .friend-avatar {
+        box-shadow: 0 0 0 2px var(--primary);
+      }
+    </style>
     </footer>
 
     <script is:inline>

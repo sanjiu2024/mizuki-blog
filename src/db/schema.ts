@@ -197,6 +197,7 @@ export const commentReactions = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     type: text("type").notNull().default("like"),
+    createdAt: integer("created_at"),
   },
   (t) => [uniqueIndex("idx_reaction_unique").on(t.commentId, t.userId)],
 );
@@ -215,6 +216,44 @@ export const postLikes = sqliteTable(
     createdAt: integer("created_at").notNull(),
   },
   (t) => [uniqueIndex("idx_post_like_unique").on(t.postId, t.userId)],
+);
+
+// ── 每日点赞历史：每人每天每目标最多一条（主键含 like_day，UTC YYYY-MM-DD）。
+// 取消点赞只删活跃行、保留历史行，同日重赞被拦截；次日可再赞。
+export const postLikeDaily = sqliteTable(
+  "post_like_daily",
+  {
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    likeDay: text("like_day").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.postId, t.userId, t.likeDay] }),
+    index("idx_post_like_daily_user_day").on(t.userId, t.likeDay),
+  ],
+);
+
+export const commentLikeDaily = sqliteTable(
+  "comment_like_daily",
+  {
+    commentId: text("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    likeDay: text("like_day").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.commentId, t.userId, t.likeDay] }),
+    index("idx_comment_like_daily_user_day").on(t.userId, t.likeDay),
+  ],
 );
 
 // ── friends (blogroll / 友情链接, admin + super_admin 可管理) ──

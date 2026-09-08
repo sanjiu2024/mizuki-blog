@@ -4,10 +4,13 @@ import { seedData } from "../../db/seed";
 import { db } from "../../db/client";
 import { postTags, tags as tagsTable } from "../../db/schema";
 import { eq } from "drizzle-orm";
+import { getLangFromUrl, createTranslator } from "../../i18n";
 
 export const prerender = false;
 
 const { slug } = Astro.params;
+const lang = getLangFromUrl(Astro.url);
+const _ = createTranslator(lang);
 const slugStr = Array.isArray(slug) ? slug.join("/") : slug ?? "";
 
 type PostRow = { id: string; slug: string; title: string; excerpt: string | null; content: string; cover: string | null; category: string | null; status: string; publishedAt?: number | null; createdAt: number; tags?: string[]; views: number; authorId?: string | null; authorName?: string | null; authorImage?: string | null };
@@ -159,11 +162,11 @@ const dateLabel = post ? new Date(dateSource).toLocaleDateString("zh-CN", { year
 const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
 ---
 
-<BaseLayout title={post ? `${post.title} — Mizuki` : "Not found — Mizuki"} description={post?.excerpt ?? "Post not found"}>
+<BaseLayout title={post ? `${post.title} — Mizuki` : `${_("post.notFound")} — Mizuki`} description={post?.excerpt ?? _("post.notFoundDesc")} lang={lang}>
   <div class="col-span-1 lg:col-start-2 w-full min-w-0">
     {post ? (
       <article class="card-base enable-card-border p-6 sm:p-8 lg:p-10 onload-animation" style="border-radius: var(--radius-large);">
-        <a href="/" class="inline-flex items-center gap-1 text-sm mb-4 btn-plain px-2 py-1 -ml-2">← Back to home</a>
+        <a href="/" class="inline-flex items-center gap-1 text-sm mb-4 btn-plain px-2 py-1 -ml-2">{_("post.backToHome")}</a>
         {isPreview && post.status !== "published" && (
           <p class="mb-4 inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">草稿预览 · 仅持有链接者可见</p>
         )}
@@ -276,28 +279,28 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
 
         <!-- Comments -->
         <section class="mt-10 pt-8" style="border-top: 1px solid var(--line-divider);">
-          <h2 class="text-lg font-bold mb-3" style="color: var(--btn-content);">Comments</h2>
+          <h2 class="text-lg font-bold mb-3" style="color: var(--btn-content);">{_("comments.title")}</h2>
           <div id="comments-root" data-post-id={post.id} class="space-y-4">
             <div id="comments-list" class="space-y-3">
-              <p class="text-sm opacity-60">Loading comments...</p>
+              <p class="text-sm opacity-60">{_("comments.loading")}</p>
             </div>
             <div id="reply-indicator" class="hidden text-xs px-1 py-1 flex items-center gap-2">
-              <span class="opacity-60">Replying to <span id="reply-to-label" class="font-semibold"></span></span>
-              <button id="reply-cancel" type="button" class="underline text-xs" style="color: var(--primary);">Cancel</button>
+              <span class="opacity-60">{_("comments.replyingTo")} <span id="reply-to-label" class="font-semibold"></span></span>
+              <button id="reply-cancel" type="button" class="underline text-xs" style="color: var(--primary);">{_("common.cancel")}</button>
             </div>
             <form id="comment-form" class="card-base enable-card-border p-4 space-y-3" style="border-radius: var(--radius-large);">
               <div class="flex gap-3">
                 <img id="comment-self-avatar" alt="我的头像" loading="lazy" class="w-9 h-9 rounded-full object-cover shrink-0 hidden" style="border:1px solid var(--line-divider);" />
-                <textarea id="comment-content" placeholder="Write a comment... (login required)" rows="3" class="w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
+                <textarea id="comment-content" placeholder={_("comments.placeholder")} rows="3" class="w-full rounded-lg border px-3 py-2 text-sm" style="background: var(--card-bg); border-color: var(--line-divider);"></textarea>
               </div>
               <div class="flex justify-between items-center">
-                <a href="/login" class="text-xs underline opacity-60">Login to comment</a>
-                <button type="submit" class="btn-regular px-5 py-2 text-sm font-semibold">Post comment</button>
+                <a href="/login" class="text-xs underline opacity-60">{_("comments.loginToComment")}</a>
+                <button type="submit" class="btn-regular px-5 py-2 text-sm font-semibold">{_("comments.submit")}</button>
               </div>
               <p id="comment-msg" class="text-xs hidden"></p>
             </form>
           </div>
-          <script is:inline define:vars={{ postId: post.id }}>
+          <script is:inline define:vars={{ postId: post.id, i18nEmpty: _("comments.empty"), i18nLoadFail: _("comments.loadFail"), i18nReplyPlaceholder: _("comments.replyPlaceholder"), i18nCommentPlaceholder: _("comments.placeholder"), i18nPosting: _("comments.posting"), i18nPosted: _("comments.posted"), i18nReply: _("comments.reply"), i18nAnonymous: _("comments.anonymous"), i18nActionFail: _("comments.actionFail") }}>
             (async () => {
               const list = document.getElementById('comments-list');
               const form = document.getElementById('comment-form');
@@ -332,7 +335,7 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
               }
               function avatarHtml(node){
                 const author = node.author || {};
-                const name = author.name || '匿名用户';
+                const name = author.name || i18nAnonymous;
                 const img = author.image || '';
                 const initial = esc(name.slice(0,1).toUpperCase());
                 const pic = img
@@ -351,7 +354,7 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                     ${avatarHtml(node)}
                     <div class="flex items-center gap-2 shrink-0">
                       <button data-like="${node.id}" class="inline-flex items-center gap-1 text-xs btn-plain px-2 py-1" aria-label="给评论点赞">♥ <span class="like-count">${likeCount}</span></button>
-                      <button data-reply="${node.id}" data-label="${esc((node.content||'').slice(0,24))}" class="text-xs btn-plain px-2 py-1">Reply</button>
+                      <button data-reply="${node.id}" data-label="${esc((node.content||'').slice(0,24))}" class="text-xs btn-plain px-2 py-1">${i18nReply}</button>
                     </div>
                   </div>
                   <div class="opacity-60 text-xs mt-1">${esc(time)}</div>
@@ -364,7 +367,7 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                   const res = await fetch(`/api/comments?postId=${postId}`);
                   const data = await res.json();
                   const rows = data.comments || [];
-                  if (!rows.length) { list.innerHTML = '<p class="text-sm opacity-60">No comments yet. Be the first!</p>'; return; }
+                  if (!rows.length) { list.innerHTML = '<p class="text-sm opacity-60">' + esc(i18nEmpty) + '</p>'; return; }
                   const tree = data.tree && data.tree.length ? data.tree : buildTree(rows);
                   list.innerHTML = tree.map(n=>renderNode(n,0)).join('');
                   // bind reply
@@ -375,7 +378,7 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                       replyLabel.textContent = replyParentLabel;
                       replyIndicator.classList.remove('hidden');
                       input.focus();
-                      input.placeholder = 'Write a reply...';
+                      input.placeholder = i18nReplyPlaceholder;
                     });
                   });
                   list.querySelectorAll('[data-like]').forEach(btn=>{
@@ -389,7 +392,7 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                         }
                         const d=await res.json().catch(()=>({}));
                         if(res.status===401){ window.location.href='/login'; return; }
-                        if(!res.ok) throw new Error(d.error||'Failed');
+                        if(!res.ok) throw new Error(d.error||i18nActionFail);
                         const span = btn.querySelector('.like-count');
                         const next = typeof d.likeCount==='number' ? d.likeCount : (typeof d.count==='number' ? d.count : null);
                         if(span && next!==null) span.textContent = String(next);
@@ -399,23 +402,23 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
                       btn.disabled=false;
                     });
                   });
-                } catch { list.innerHTML = '<p class="text-sm opacity-60">Failed to load.</p>'; }
+                } catch { list.innerHTML = '<p class="text-sm opacity-60">' + esc(i18nLoadFail) + '</p>'; }
               };
-              replyCancel?.addEventListener('click', ()=>{ replyParentId=null; replyIndicator.classList.add('hidden'); input.placeholder='Write a comment... (login required)'; });
+              replyCancel?.addEventListener('click', ()=>{ replyParentId=null; replyIndicator.classList.add('hidden'); input.placeholder=i18nCommentPlaceholder; });
               await load();
               form?.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const content = input.value.trim();
                 if (!content) return;
-                msg.classList.remove('hidden'); msg.textContent='Posting...'; msg.className='text-xs';
+                msg.classList.remove('hidden'); msg.textContent=i18nPosting; msg.className='text-xs';
                 try {
                   const payload = { postId, content };
                   if(replyParentId) payload.parentId = replyParentId;
                   const res = await fetch('/api/comments', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(payload) });
                   const data = await res.json().catch(()=>({}));
                   if (res.status === 401) { window.location.href = '/login'; return; }
-                  if (!res.ok) throw new Error(data.error || 'Failed');
-                  msg.textContent='Posted!'; input.value=''; replyParentId=null; replyIndicator.classList.add('hidden'); input.placeholder='Write a comment... (login required)'; await load();
+                  if (!res.ok) throw new Error(data.error || i18nActionFail);
+                  msg.textContent=i18nPosted; input.value=''; replyParentId=null; replyIndicator.classList.add('hidden'); input.placeholder=i18nCommentPlaceholder; await load();
                 } catch(err){ msg.textContent=err.message||String(err); msg.classList.add('text-red-500'); }
                 setTimeout(()=> msg.classList.add('hidden'), 2500);
               });
@@ -425,9 +428,9 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
       </article>
     ) : (
       <div class="card-base enable-card-border p-10 text-center" style="border-radius: var(--radius-large);">
-        <h1 class="text-2xl font-bold">404 — Post not found</h1>
-        <p class="text-sm mt-2 opacity-70">No post matches slug “{slugStr}”.</p>
-        <a href="/" class="btn-regular inline-flex mt-6 px-6 py-2.5 text-sm font-semibold">Go home</a>
+        <h1 class="text-2xl font-bold">404 — {_("post.notFound")}</h1>
+        <p class="text-sm mt-2 opacity-70">{_("post.noMatch", { slug: slugStr })}</p>
+        <a href="/" class="btn-regular inline-flex mt-6 px-6 py-2.5 text-sm font-semibold">{_("post.goHome")}</a>
       </div>
     )}
   </div>
@@ -436,9 +439,9 @@ const dateTimeLabel = post ? new Date(dateSource).toLocaleString("zh-CN") : "";
   <aside class="hidden lg:block lg:col-start-1">
     <div class="sticky top-[4.5rem] space-y-4">
       <div class="card-base enable-card-border p-5" style="border-radius: var(--radius-large);">
-        <h3 class="font-semibold text-sm mb-2" style="color: var(--btn-content);">Navigation</h3>
+        <h3 class="font-semibold text-sm mb-2" style="color: var(--btn-content);">{_("post.navTitle")}</h3>
         <ul class="space-y-1.5 text-sm">
-          <li><a href="/" class="btn-plain px-2 py-1 inline-flex w-full">← All posts</a></li>
+          <li><a href="/" class="btn-plain px-2 py-1 inline-flex w-full">{_("post.allPosts")}</a></li>
           <li><a href="/api/posts" class="btn-plain px-2 py-1 inline-flex w-full">API</a></li>
         </ul>
       </div>

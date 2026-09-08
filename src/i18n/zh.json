@@ -90,6 +90,7 @@
   "comments.posted": "发布成功！",
   "comments.loadFail": "加载失败。",
   "comments.actionFail": "操作失败",
+  "comments.anonymous": "匿名用户",
   "auth.loginTitle": "登录",
   "auth.registerTitle": "注册",
   "auth.email": "邮箱",

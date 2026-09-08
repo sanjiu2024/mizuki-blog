@@ -3,6 +3,7 @@ import { db } from "../../db/client";
 import { auth } from "../../auth";
 import { comments } from "../../db/schema";
 import { eq, desc } from "drizzle-orm";
+import { extractUserId, toggleCommentLike } from "../../lib/commentLike";
 
 export const prerender = false;
 
@@ -44,23 +45,35 @@ type CommentRow = {
   likeCount: number;
 };
 
-function buildTree(rows: CommentRow[]) {
-  const byId = new Map<string, any>();
-  const roots: any[] = [];
+interface TreeNode extends CommentRow {
+  children: TreeNode[];
+}
+
+interface SessionUser {
+  name?: string | null;
+  image?: string | null;
+  email?: string | null;
+}
+
+function buildTree(rows: CommentRow[]): TreeNode[] {
+  const byId = new Map<string, TreeNode>();
+  const roots: TreeNode[] = [];
   // init nodes
   for (const r of rows) {
     byId.set(r.id, { ...r, children: [], likeCount: Number(r.likeCount ?? 0) });
   }
   for (const r of rows) {
     const node = byId.get(r.id);
+    if (!node) continue;
     if (r.parent_id && byId.has(r.parent_id)) {
-      byId.get(r.parent_id).children.push(node);
+      const parent = byId.get(r.parent_id);
+      if (parent) parent.children.push(node);
     } else {
       roots.push(node);
     }
   }
   // ensure chronological within each level
-  const sortRec = (arr: any[]) => {
+  const sortRec = (arr: TreeNode[]): void => {
     arr.sort((a, b) => a.created_at - b.created_at);
     arr.forEach((n) => sortRec(n.children));
   };
@@ -92,19 +105,30 @@ export const GET: APIRoute = async (ctx) => {
          ORDER BY c.created_at ASC`,
       args: [postId],
     });
-    const rows = (rs.rows ?? []) as unknown as CommentRow[];
+    const rows = (rs.rows ?? []) as unknown as Array<
+      CommentRow & { author_name?: unknown; author_image?: unknown }
+    >;
     // Normalize likeCount (sqlite returns integer)
-    const normalized = rows.map((r: any) => ({
-      ...r,
+    const normalized: CommentRow[] = rows.map((r) => ({
+      id: r.id,
+      post_id: r.post_id,
+      author_id: r.author_id,
+      parent_id: r.parent_id,
+      content: r.content,
+      status: r.status,
+      created_at: r.created_at,
       likeCount: Number(r.likeCount ?? 0),
+    }));
+    const withAuthors = rows.map((r, i) => ({
+      ...normalized[i],
       author: {
         id: r.author_id ?? null,
-        name: r.author_name ?? null,
-        image: r.author_image ?? null,
+        name: typeof r.author_name === "string" ? r.author_name : null,
+        image: typeof r.author_image === "string" ? r.author_image : null,
       },
     }));
     const tree = buildTree(normalized);
-    return new Response(JSON.stringify({ comments: normalized, tree }), {
+    return new Response(JSON.stringify({ comments: withAuthors, tree }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
@@ -115,7 +139,7 @@ export const GET: APIRoute = async (ctx) => {
       .where(eq(comments.postId, postId))
       .orderBy(desc(comments.createdAt));
     const mapped = await Promise.all(
-      rows.map(async (r: any) => {
+      rows.map(async (r) => {
         let author: { id: string | null; name: string | null; image: string | null } = {
           id: r.authorId ?? null,
           name: null,
@@ -127,8 +151,14 @@ export const GET: APIRoute = async (ctx) => {
               sql: "SELECT id, name, image FROM users WHERE id=?",
               args: [r.authorId],
             });
-            const row = u.rows?.[0] as any;
-            if (row) author = { id: row.id, name: row.name ?? null, image: row.image ?? null };
+            const row = u.rows?.[0] as Record<string, unknown> | undefined;
+            if (row && typeof row.id === "string") {
+              author = {
+                id: row.id,
+                name: typeof row.name === "string" ? row.name : author.name,
+                image: typeof row.image === "string" ? row.image : author.image,
+              };
+            }
           } catch {}
         }
         return {
@@ -144,7 +174,18 @@ export const GET: APIRoute = async (ctx) => {
         };
       }),
     );
-    const tree = buildTree(mapped as any);
+    const tree = buildTree(
+      mapped.map((m) => ({
+        id: m.id,
+        post_id: m.post_id,
+        author_id: m.author_id,
+        parent_id: m.parent_id,
+        content: m.content,
+        status: m.status,
+        created_at: m.created_at,
+        likeCount: m.likeCount,
+      })),
+    );
     return new Response(JSON.stringify({ comments: mapped, tree }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -157,11 +198,20 @@ export const POST: APIRoute = async (ctx) => {
   const maybeLike =
     url.pathname.endsWith("/like") || url.searchParams.get("action") === "like";
 
-  const body: any = await ctx.request.json().catch(() => ({}));
-  const isLikeRequest = maybeLike || body?.action === "like" || body?.commentId;
+  const rawBody: unknown = await ctx.request.json().catch(() => ({}));
+  const body: Record<string, unknown> =
+    typeof rawBody === "object" && rawBody !== null
+      ? (rawBody as Record<string, unknown>)
+      : {};
+  const isLikeRequest =
+    maybeLike || body.action === "like" || typeof body.commentId === "string";
 
   // If it's a like request via this endpoint (POST /api/comments/like style), handle here
-  if (isLikeRequest && body?.commentId && !body?.postId) {
+  if (
+    isLikeRequest &&
+    typeof body.commentId === "string" &&
+    typeof body.postId !== "string"
+  ) {
     return handleLike(ctx, body.commentId);
   }
 
@@ -176,12 +226,14 @@ export const POST: APIRoute = async (ctx) => {
 
   // auth check via better-auth session
   let userId: string | null = null;
-  let sessionUser: { name?: string | null; image?: string | null; email?: string | null } | null = null;
+  let sessionUser: SessionUser | null = null;
   try {
     const session = await auth.api.getSession({ headers: ctx.request.headers });
-    userId =
-      (session as any)?.user?.id ?? (session as any)?.session?.userId ?? null;
-    sessionUser = (session as any)?.user ?? null;
+    userId = extractUserId(session);
+    sessionUser =
+      typeof session === "object" && session !== null
+        ? ((session as { user?: unknown }).user as SessionUser | null) ?? null
+        : null;
   } catch {}
   if (!userId)
     return new Response(
@@ -189,8 +241,10 @@ export const POST: APIRoute = async (ctx) => {
       { status: 401 },
     );
 
-  const { postId, content, parentId } = body;
-  if (!postId || !content?.trim())
+  const postId = body.postId;
+  const content = body.content;
+  const parentId = typeof body.parentId === "string" ? body.parentId : null;
+  if (typeof postId !== "string" || typeof content !== "string" || !content.trim())
     return new Response(
       JSON.stringify({ error: "请填写文章 ID 与评论内容" }),
       { status: 400 },
@@ -222,8 +276,14 @@ export const POST: APIRoute = async (ctx) => {
       sql: "SELECT id, name, image FROM users WHERE id=?",
       args: [userId],
     });
-    const row = u.rows?.[0] as any;
-    if (row) author = { id: row.id, name: row.name ?? author.name, image: row.image ?? author.image };
+    const row = u.rows?.[0] as Record<string, unknown> | undefined;
+    if (row && typeof row.id === "string") {
+      author = {
+        id: row.id,
+        name: typeof row.name === "string" ? row.name : author.name,
+        image: typeof row.image === "string" ? row.image : author.image,
+      };
+    }
   } catch {}
   return new Response(
     JSON.stringify({
@@ -248,7 +308,7 @@ export const POST: APIRoute = async (ctx) => {
   );
 };
 
-async function handleLike(ctx: any, commentId: string) {
+async function handleLike(ctx: Parameters<APIRoute>[0], commentId: string) {
   if (!commentId)
     return new Response(JSON.stringify({ error: "缺少 commentId 参数" }), {
       status: 400,
@@ -262,59 +322,14 @@ async function handleLike(ctx: any, commentId: string) {
   let userId: string | null = null;
   try {
     const session = await auth.api.getSession({ headers: ctx.request.headers });
-    userId =
-      (session as any)?.user?.id ?? (session as any)?.session?.userId ?? null;
-  } catch {}
+    userId = extractUserId(session);
+  } catch {
+    userId = null;
+  }
   if (!userId)
     return new Response(
       JSON.stringify({ error: "未登录，请先登录" }),
       { status: 401 },
     );
-  const id = `r_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-  try {
-    await db.$client.execute({
-      sql: "INSERT INTO comment_reactions (id, comment_id, user_id, type) VALUES (?, ?, ?, 'like')",
-      args: [id, commentId, userId],
-    });
-  } catch (e: any) {
-    const msg = String(e?.message ?? e);
-    // Unique constraint -> already liked, toggle off (unlike)
-    if (
-      msg.includes("UNIQUE") ||
-      msg.includes("unique") ||
-      msg.includes("idx_reaction_unique")
-    ) {
-      await db.$client.execute({
-        sql: "DELETE FROM comment_reactions WHERE comment_id=? AND user_id=?",
-        args: [commentId, userId],
-      });
-      const cnt = await db.$client.execute({
-        sql: "SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?",
-        args: [commentId],
-      });
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          liked: false,
-          likeCount: Number((cnt.rows?.[0] as any)?.c ?? 0),
-        }),
-        { headers: { "Content-Type": "application/json" } },
-      );
-    }
-    return new Response(JSON.stringify({ error: "点赞失败" }), {
-      status: 500,
-    });
-  }
-  const cnt = await db.$client.execute({
-    sql: "SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?",
-    args: [commentId],
-  });
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      liked: true,
-      likeCount: Number((cnt.rows?.[0] as any)?.c ?? 1),
-    }),
-    { headers: { "Content-Type": "application/json" } },
-  );
+  return toggleCommentLike(commentId, userId);
 }

@@ -1,0 +1,10 @@
+[2026-09-08 22:53:03] 开始更新：/home/sanjiu/jiuyue (force=0, dry_run=1, skip_build=0)
+[2026-09-08 22:53:03] 依赖未变更，跳过 pnpm install（加 --force 可强制）
+[2026-09-08 22:53:03] 表结构未变更，跳过 drizzle-kit push
+[2026-09-08 22:53:03] 更新完成 ✅  访问：curl -I http://127.0.0.1:4321
+[2026-09-08 22:53:44] 开始更新：/home/sanjiu/jiuyue (force=0, dry_run=1, skip_build=0)
+[2026-09-08 22:53:44] 依赖未变更，跳过 pnpm install（加 --force 可强制）
+[2026-09-08 22:53:44] 表结构未变更，跳过 drizzle-kit push
+[2026-09-08 22:53:44] 更新完成 ✅  访问：curl -I http://127.0.0.1:4321
+[2026-09-08 23:07:24] 开始一键更新：/home/sanjiu/jiuyue
+[2026-09-08 23:07:24] 一键更新完成 ✅  https://vvvvvv.bigsb.cn

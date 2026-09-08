@@ -1,13 +1,27 @@
 import type { APIRoute } from "astro";
-import { db } from "../../../db/client";
 import { auth } from "../../../auth";
+import {
+  extractUserId,
+  requireCommentId,
+  toggleCommentLike,
+} from "../../../lib/commentLike";
+
 export const prerender = false;
 
-// Re-export like handling via main comments module logic (POST /api/comments/like)
+interface LikeBody {
+  commentId?: unknown;
+  id?: unknown;
+}
+
 export const POST: APIRoute = async (ctx) => {
-  const body: any = await ctx.request.json().catch(() => ({}));
-  const commentId = body.commentId ?? body.id;
-  if (!commentId)
+  let body: LikeBody = {};
+  try {
+    body = (await ctx.request.json()) as LikeBody;
+  } catch {
+    body = {};
+  }
+  const rawId = body.commentId ?? body.id;
+  if (!requireCommentId(rawId))
     return new Response(JSON.stringify({ error: "缺少 commentId 参数" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
@@ -15,55 +29,14 @@ export const POST: APIRoute = async (ctx) => {
   let userId: string | null = null;
   try {
     const session = await auth.api.getSession({ headers: ctx.request.headers });
-    userId =
-      (session as any)?.user?.id ?? (session as any)?.session?.userId ?? null;
-  } catch {}
+    userId = extractUserId(session);
+  } catch {
+    userId = null;
+  }
   if (!userId)
     return new Response(JSON.stringify({ error: "未登录，请先登录" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
-  const rid = `r_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-  try {
-    await db.$client.execute({
-      sql: "INSERT INTO comment_reactions (id, comment_id, user_id, type) VALUES (?, ?, ?, 'like')",
-      args: [rid, commentId, userId],
-    });
-  } catch (e: any) {
-    const msg = String(e?.message ?? e);
-    if (msg.includes("UNIQUE") || msg.includes("unique")) {
-      await db.$client.execute({
-        sql: "DELETE FROM comment_reactions WHERE comment_id=? AND user_id=?",
-        args: [commentId, userId],
-      });
-      const cnt = await db.$client.execute({
-        sql: "SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?",
-        args: [commentId],
-      });
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          liked: false,
-          likeCount: Number((cnt.rows?.[0] as any)?.c ?? 0),
-        }),
-        { headers: { "Content-Type": "application/json" } },
-      );
-    }
-    return new Response(JSON.stringify({ error: "点赞失败" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  const cnt = await db.$client.execute({
-    sql: "SELECT COUNT(*) as c FROM comment_reactions WHERE comment_id=?",
-    args: [commentId],
-  });
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      liked: true,
-      likeCount: Number((cnt.rows?.[0] as any)?.c ?? 1),
-    }),
-    { headers: { "Content-Type": "application/json" } },
-  );
+  return toggleCommentLike(rawId, userId);
 };
