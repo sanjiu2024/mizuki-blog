@@ -36,9 +36,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
   echo "[dry-run] pnpm exec drizzle-kit push --force"
 else
   log "git pull origin main"
-  # 丢弃本地对已追踪文件的修改（宝塔上常因直接改 .env/ecosystem 导致 pull 失败），未追踪文件保持不动
   git reset --hard HEAD 2>&1 | tee -a "$LOG_DIR/update.log" || true
-  git clean -fd 2>&1 | tee -a "$LOG_DIR/update.log" || true
+  git clean -fd --exclude="data/**" --exclude="logs/**" --exclude=".env" --exclude=".env.*" 2>&1 | tee -a "$LOG_DIR/update.log" || true
   if ! git pull --rebase --autostash origin main 2>&1 | tee -a "$LOG_DIR/update.log"; then
     log "git pull --rebase 失败，尝试 reset 到 origin/main"
     git fetch origin main 2>&1 | tee -a "$LOG_DIR/update.log" || true
