@@ -24,8 +24,8 @@ export async function GET(context: any) {
   }
 
   return rss({
-    title: "Mizuki Blog",
-    description: "Mizuki 动态博客",
+    title: "JiuYue Blog",
+    description: "JiuYue 动态博客",
     site: context.site,
     items: posts.map((p: any) => ({
       title: p.title,
